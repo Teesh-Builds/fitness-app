@@ -8,5 +8,6 @@ cd "$(dirname "$0")"
   echo '<style>'; cat styles.css; echo '</style>'
   echo '<div id="app"></div>'
   echo '<script>'; cat exercises.js; echo '</script>'
+  echo '<script>'; cat xlsx.js; echo '</script>'
   echo '<script>'; cat app.js; echo '</script>'
 } > preview.html

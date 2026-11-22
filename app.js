@@ -533,6 +533,9 @@
       ${standalone ? '' : `<section class="card flat"><h3>Add to your home screen</h3><p class="muted" style="font-size:.88rem">iPhone (Safari): tap Share, then Add to Home Screen. Android (Chrome): tap the ⋮ menu, then Install app or Add to Home screen.</p></section>`}
       <section class="card"><h2>Settings</h2>
         <div class="btnrow"><button class="btn" data-act="edit-profile">Edit profile &amp; units</button><button class="btn" data-act="show-welcome">How Lift Block works</button><button class="btn" data-act="checkin-start">Finish Block ${b.n}</button></div>
+        <h3>Download your data</h3>
+        <p class="muted" style="font-size:.88rem">Every workout, set, bonus workout, steps, activity level and measurement in one Excel file.</p>
+        <div><button class="btn primary" data-act="excel">Download Excel file</button></div>
         <h3>Backup</h3>
         <p class="muted" style="font-size:.88rem">Your data is saved only in this browser on this device. Export a backup file now and then, or to move to a new phone.</p>
         <div class="btnrow"><button class="btn" data-act="export">Export backup</button><label class="btn filebtn">Import backup<input type="file" accept="application/json,.json" data-import></label></div>
@@ -645,7 +648,8 @@
       }
       case 'welcome-go': ui.welcomed = true; ui.showWelcome = false; top(); break;
       case 'show-welcome': ui.showWelcome = true; top(); break;
-      case 'export': exportData(); break;
+      case 'export': exportData(); return;
+      case 'excel': exportExcel(); return;
       case 'reset-ask': ui.confirmReset = true; break;
       case 'reset-no': ui.confirmReset = false; break;
       case 'reset-yes':
@@ -706,16 +710,86 @@
     if (t.hasAttribute('data-import') && t.files[0]) importData(t.files[0]);
   });
 
-  function exportData() {
+  // Save a file. On an iPhone home-screen app, open the share sheet (Save to Files, AirDrop, Mail...).
+  async function saveFile(blob, filename, okMsg) {
     try {
-      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const file = typeof File === 'function' ? new File([blob], filename, { type: blob.type }) : null;
+      const iosApp = window.navigator.standalone === true;
+      if (iosApp && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: filename }); ui.msg = okMsg; }
+        catch (e) { ui.msg = e && e.name === 'AbortError' ? '' : 'Could not share the file.'; }
+        render(); return;
+      }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `liftblock-backup-${todayISO()}.json`;
+      a.download = filename;
       document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-      ui.msg = 'Backup file saved to your downloads.';
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      ui.msg = okMsg;
     } catch (err) { ui.msg = 'Could not save a file here. Try again from the installed app.'; }
+    render();
+  }
+  function exportData() {
+    saveFile(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), `liftblock-backup-${todayISO()}.json`, 'Backup file saved.');
+  }
+
+  function workbook() {
+    const p = state.profile, wu = p.weightUnit, lu = p.lengthUnit;
+    const v = (x) => { const n = num(x); return n !== null && String(n) === String(x).trim() ? n : (x ?? ''); };
+    const yn = (b) => (b ? 'Yes' : 'No');
+    const keys = Object.keys(state.logs).map((k) => k.split('-').map(Number)).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+    const blockOf = (n) => state.blocks.find((b) => b.n === n);
+    const weekStart = (n, w) => { const b = blockOf(n); return b ? addDays(b.startDate, (w - 1) * 7) : ''; };
+
+    const sets = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Completed on', 'Movement', 'Exercise', 'Set', `Weight (${wu})`, 'Reps']];
+    const days = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Day complete', 'Completed on', 'Cardio warm-up', 'Dynamic warm-up', 'Cardio', 'Cardio exercise', 'Cardio minutes', 'Notes']];
+    for (const [n, w, d] of keys) {
+      const l = state.logs[logKey(n, w, d)], b = blockOf(n);
+      const plan = b ? planOf(b) : {};
+      for (const c of CATS) {
+        if (c.type === 'cardio') continue;
+        const arr = l.sets && l.sets[c.key];
+        if (!arr) continue;
+        const exId = (l.ex && l.ex[c.key]) || plan[c.key];
+        arr.forEach((st, i) => { if (st.w || st.r) sets.push([n, w, d, yn(isDeload(w)), weekStart(n, w), l.doneDate || '', c.label, findEx(exId)?.name || exId || '', i + 1, v(st.w), v(st.r)]); });
+      }
+      const cardioId = (l.ex && l.ex.cardio) || plan.cardio;
+      days.push([n, w, d, yn(isDeload(w)), weekStart(n, w), yn(l.done), l.doneDate || '', yn(l.warmup), yn(l.dynamic), yn(l.cardio), findEx(cardioId)?.name || '', v(l.cardioMin), l.notes || '']);
+    }
+
+    const daily = [['Date', 'Activity level', 'Calorie target', 'Steps', 'Bonus workout', 'Minutes', 'Note']];
+    for (const iso of Object.keys(state.daily || {}).sort()) {
+      const dd = state.daily[iso];
+      const m = macros(p, activityFor(iso));
+      const base = [iso, ACTIVITY[activityFor(iso)].label, m.missing ? '' : m.target, v(dd.steps)];
+      if (dd.bonus && dd.bonus.length) dd.bonus.forEach((x) => daily.push([...base, x.type, v(x.min), x.note || '']));
+      else daily.push([...base, '', '', '']);
+    }
+
+    const meas = [['Block', 'Check-in date', 'Weight', 'Weight unit', 'Goal weight', ...MEAS.map(([, l]) => l), 'Measurement unit', 'Measured on']];
+    for (const b of state.blocks) {
+      const s = b.startStats || {};
+      meas.push([b.n, s.date || b.startDate, v(s.weight), s.weightUnit || wu, v(s.goalWeight), ...MEAS.map(([k]) => v(s.meas?.[k] || '')), s.lengthUnit || lu, s.measDate || (hasMeas(s.meas) ? s.date : '') || '']);
+    }
+
+    const m = macros(p, p.activity);
+    const prof = [['Item', 'Value'], ['Name', p.name], ['Age', v(p.age)], ['Sex', p.sex || ''], ['Height', heightText(p)], [`Current weight (${wu})`, v(p.weight)], [`Goal weight (${wu})`, v(p.goalWeight)],
+      ['Goal', GOALS[p.goal || 'lose'].label], ['Usual activity level', ACTIVITY[p.activity || 'moderate'].label], ['Calories (usual activity)', m.missing ? '' : m.target], ['Protein (g / day)', m.protein ?? ''],
+      ['Current block', curBlock().n], ['Block started', curBlock().startDate], ['Exported', todayISO()]];
+    const plans = [['Block', 'Started', ...CATS.map((c) => c.label)], ...state.blocks.map((b) => [b.n, b.startDate, ...CATS.map((c) => findEx(planOf(b)[c.key])?.name || '')])];
+
+    return window.makeXlsx([
+      { name: 'Workout Sets', rows: sets, widths: [7, 6, 5, 11, 13, 13, 11, 26, 5, 12, 6] },
+      { name: 'Lift Days', rows: days, widths: [7, 6, 5, 11, 13, 12, 13, 14, 15, 7, 22, 14, 40] },
+      { name: 'Bonus & Steps', rows: daily, widths: [12, 18, 13, 9, 15, 9, 30] },
+      { name: 'Measurements', rows: meas, widths: [7, 13, 9, 11, 12, 9, 9, 9, 10, 9, 16, 13] },
+      { name: 'Plans', rows: plans, widths: [7, 12, 20, 24, 18, 20, 16, 18, 22] },
+      { name: 'Profile', rows: prof, widths: [24, 22] },
+    ]);
+  }
+  function exportExcel() {
+    try { saveFile(workbook(), `LiftBlock-${todayISO()}.xlsx`, 'Excel file saved.'); }
+    catch (err) { ui.msg = 'Could not build the Excel file.'; render(); }
   }
   function importData(file) {
     const r = new FileReader();

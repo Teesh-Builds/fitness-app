@@ -1,6 +1,6 @@
 // Bump VERSION whenever you change any app file so phones pick up the update.
-const VERSION = 'liftblock-v9';
-const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
+const VERSION = 'liftblock-v10';
+const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'xlsx.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
