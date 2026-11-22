@@ -282,7 +282,74 @@
   }
 
   /* ---------- shell views ---------- */
+  const BONUS_TYPES = ['Cardio', 'Hot Yoga', 'Pilates', 'Walk', 'Other'];
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const isoOf = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  function liftDays() {
+    const map = {};
+    for (const [k, l] of Object.entries(state.logs)) {
+      if (!l.done || !l.doneDate) continue;
+      const [n, w, d] = k.split('-');
+      (map[l.doneDate] = map[l.doneDate] || []).push(`Block ${n} · Week ${w} · Day ${d}`);
+    }
+    return map;
+  }
+  const dayData = (iso) => (state.daily && state.daily[iso]) || null;
+  function ensureDay(iso) {
+    state.daily = state.daily || {};
+    if (!state.daily[iso]) state.daily[iso] = { steps: '', bonus: [] };
+    return state.daily[iso];
+  }
+
+  function viewCal() {
+    const today = todayISO();
+    const sel = ui.calDate || today;
+    const [y, m] = (ui.calMonth || today.slice(0, 7)).split('-').map(Number);
+    const first = new Date(y, m - 1, 1);
+    const lifts = liftDays();
+    const cells = [];
+    for (let i = 0; i < first.getDay(); i++) cells.push('<span class="cday empty"></span>');
+    const daysIn = new Date(y, m, 0).getDate();
+    let nLift = 0, nBonus = 0, stepSum = 0, stepDays = 0;
+    for (let d = 1; d <= daysIn; d++) {
+      const iso = `${y}-${pad2(m)}-${pad2(d)}`;
+      const dd = dayData(iso);
+      const lift = !!lifts[iso], bonus = dd && dd.bonus.length > 0;
+      if (lift) nLift++;
+      if (bonus) nBonus += dd.bonus.length;
+      if (dd && num(dd.steps)) { stepSum += num(dd.steps); stepDays++; }
+      const label = `${parseISO(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}${lift ? ', lift day done' : ''}${bonus ? ', bonus workout' : ''}`;
+      cells.push(`<button class="cday${lift ? ' lift' : ''}${iso === today ? ' today' : ''}" data-act="cal-day" data-date="${iso}" aria-pressed="${iso === sel}" aria-label="${esc(label)}">${d}${bonus ? '<i class="bdot" aria-hidden="true"></i>' : ''}</button>`);
+    }
+    const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const dd = dayData(sel);
+    const selLifts = lifts[sel] || [];
+    const future = sel > today;
+    return `<section class="card">
+        <div class="calhead"><button class="btn ghost sm" data-act="cal-month" data-delta="-1" aria-label="Previous month">‹</button><h2>${monthName}</h2><button class="btn ghost sm" data-act="cal-month" data-delta="1" aria-label="Next month">›</button></div>
+        <div class="cal">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((x) => `<span class="cdow">${x}</span>`).join('')}${cells.join('')}</div>
+        <div class="legend"><span><i class="lg lift"></i>Lift day done</span><span><i class="lg bonus"></i>Bonus workout</span></div>
+        <p class="muted num" style="font-size:.85rem">This month: ${nLift} lift day${nLift === 1 ? '' : 's'} · ${nBonus} bonus workout${nBonus === 1 ? '' : 's'}${stepDays ? ` · ${Math.round(stepSum / stepDays).toLocaleString()} avg steps` : ''}</p>
+      </section>
+      <section class="card">
+        <h2>${parseISO(sel).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
+        ${selLifts.length ? selLifts.map((t) => `<p class="liftdone">✓ ${esc(t)}</p>`).join('') : `<p class="muted" style="font-size:.88rem">${future ? 'Coming up.' : 'No lift day logged. Rest days are a great time for a bonus workout.'}</p>`}
+        ${future ? '' : `
+        <label class="field" for="f-steps">Daily steps<span class="unitin"><input type="text" inputmode="numeric" id="f-steps" data-dayfield="steps" value="${esc(dd?.steps || '')}" placeholder="e.g. 8000" autocomplete="off"><span>steps</span></span></label>
+        <h3>Bonus workouts</h3>
+        ${dd && dd.bonus.length ? `<ul class="blist">${dd.bonus.map((x, i) => `<li><span><b>${esc(x.type)}</b>${x.min ? ` · ${esc(x.min)} min` : ''}${x.note ? `<small>${esc(x.note)}</small>` : ''}</span><button class="btn ghost sm" data-act="bonus-rm" data-i="${i}" aria-label="Remove ${esc(x.type)}">Remove</button></li>`).join('')}</ul>` : ''}
+        <div class="bform">
+          <label class="field" for="f-btype">Workout<select id="f-btype">${BONUS_TYPES.map((t) => `<option>${t}</option>`).join('')}</select></label>
+          ${unitInput('f-bmin', '', '', 'min', 'Minutes')}
+          <label class="field bnote" for="f-bnote">Note <small>(optional)</small><input type="text" id="f-bnote" placeholder="e.g. 45 min hot yoga flow" autocomplete="off"></label>
+        </div>
+        <div><button class="btn primary" data-act="bonus-add">+ Add bonus workout</button></div>
+        <p class="hint">Bonus workouts are extra. They don't count toward your 3 lift days.</p>`}
+      </section>`;
+  }
+
   const ICONS = {
+    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
     today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/></svg>',
     plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>',
     me: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>',
@@ -290,8 +357,8 @@
   function renderShell() {
     const b = curBlock();
     const w = Math.min(weekNow(b), WEEKS);
-    const views = { today: viewToday, plan: viewPlan, me: viewMe };
-    return `<header class="topbar"><span class="brand">Lift<b>Block</b></span><span class="where num">Block ${b.n} · Week ${needsCheckin() ? WEEKS + 1 : w}${isDeload(w) && !needsCheckin() ? ' · Deload' : ''}</span></header>
+    const views = { today: viewToday, plan: viewPlan, me: viewMe, cal: viewCal };
+    return `<header class="topbar"><span class="brand">Lift<b>Block</b></span><span class="topright"><span class="where num">Block ${b.n} · Week ${needsCheckin() ? WEEKS + 1 : w}${isDeload(w) && !needsCheckin() ? ' · Deload' : ''}</span><button class="calbtn" data-act="nav" data-view="cal" aria-label="Calendar"${ui.view === 'cal' ? ' aria-current="page"' : ''}>${ICONS.cal}</button></span></header>
       <main class="page">${views[ui.view]()}</main>
       <nav class="tabs" aria-label="Main"><div class="tabs-in">
         ${[['today', 'Workout'], ['plan', 'Plan'], ['me', 'Progress']].map(([v, l]) => `<button data-act="nav" data-view="${v}"${ui.view === v ? ' aria-current="page"' : ''}>${ICONS[v]}${l}</button>`).join('')}
@@ -490,9 +557,28 @@
       case 'toggle-done': {
         const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d);
         log.done = !log.done; ui.day = d;
+        if (log.done) log.doneDate = todayISO(); else delete log.doneDate;
         if (log.done && w === WEEKS && daysDone(n, WEEKS) === 3) window.scrollTo(0, 0);
         snapshotEx(log, d);
         save(); break;
+      }
+      case 'cal-month': {
+        const [y, m] = (ui.calMonth || todayISO().slice(0, 7)).split('-').map(Number);
+        ui.calMonth = isoOf(new Date(y, m - 1 + +t.dataset.delta, 1)).slice(0, 7); break;
+      }
+      case 'cal-day': ui.calDate = t.dataset.date; break;
+      case 'bonus-add': {
+        const iso = ui.calDate || todayISO();
+        const type = document.getElementById('f-btype').value;
+        const min = document.getElementById('f-bmin').value.trim();
+        const note = document.getElementById('f-bnote').value.trim();
+        ensureDay(iso).bonus.push({ type, min, note });
+        save(); break;
+      }
+      case 'bonus-rm': {
+        const dd = dayData(ui.calDate || todayISO());
+        if (dd) { dd.bonus.splice(+t.dataset.i, 1); save(); }
+        break;
       }
       case 'welcome-go': ui.welcomed = true; ui.showWelcome = false; top(); break;
       case 'show-welcome': ui.showWelcome = true; top(); break;
@@ -516,6 +602,7 @@
     const t = e.target;
     if (t.dataset.draft && ui.draft) { ui.draft[t.dataset.draft] = t.value; updatePreview(); return; }
     if (t.dataset.meas && ui.draft) { ui.draft.meas = ui.draft.meas || {}; ui.draft.meas[t.dataset.meas] = t.value; return; }
+    if (t.dataset.dayfield) { ensureDay(ui.calDate || todayISO())[t.dataset.dayfield] = t.value.trim(); save(); return; }
     if (!ui.ctx) return;
     const { n, w, d } = ui.ctx;
     if (t.dataset.set) {
