@@ -558,7 +558,7 @@
       <p class="welcome-lede">3 days a week. Full body. Zero guesswork.</p>
       <ol class="wsteps">${steps.map(([t, s], i) => `<li><span class="wn">${i + 1}</span><span><b>${t}</b><small>${s}</small></span></li>`).join('')}</ol>
       <p class="welcome-tag">Simple plan. Consistent action. Real results.</p>
-      <button class="btn primary block big" data-act="welcome-go">${state ? 'Back to my plan' : 'I\'m ready for Lift Block'}</button>
+      <button class="btn primary block big" data-act="welcome-go">${state ? 'Back to my plan' : "LET'S GOOOO 💪🏽😠"}</button>
       <p class="welcome-note">Your data stays on your phone.</p>
     </div></div>`;
   }
