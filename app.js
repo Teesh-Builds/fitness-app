@@ -219,6 +219,7 @@
           : `<div class="grid2">${unitInput('f-hft', 'data-draft="heightFt"', d.heightFt, 'ft', 'Height')}${unitInput('f-hin', 'data-draft="heightIn"', d.heightIn, 'in', '&nbsp;')}</div>`}</div>`}
         <div class="card">
           <h3>Measurements <small class="muted">(optional)</small></h3>
+          <p class="muted" style="font-size:.88rem">Not a good week to measure? Skip these. You can add them any time from Progress.</p>
           <div class="grid2">${MEAS.map(([k, l]) => unitInput('f-m-' + k, `data-meas="${k}"`, (d.meas || {})[k] || '', lu, l, ci && prev.meas?.[k] ? `Last: ${prev.meas[k]}` : '')).join('')}</div>
         </div>`;
     },
@@ -389,7 +390,7 @@
     const weekBtns = Array.from({ length: WEEKS }, (_, i) => i + 1).map((n) =>
       `<button data-act="week" data-w="${n}" aria-pressed="${n === w}" class="${isDeload(n) ? 'deload ' : ''}${n === now ? 'now ' : ''}${daysDone(b.n, n) === 3 ? 'full' : ''}" aria-label="Week ${n}${isDeload(n) ? ', deload' : ''}">${n}<small>${isDeload(n) ? 'Deload' : n === now ? 'Now' : ''}</small></button>`).join('');
 
-    let banner = '';
+    let banner = measNudge(b);
     if (needsCheckin()) banner += checkinBanner();
     else if (w === WEEKS && daysDone(b.n, WEEKS) === 3) banner += finishBanner(b);
     if (deload) banner += `<div class="banner deload"><strong>Deload week: lower your weights</strong><p>Use about 60% of the weight you lifted last week on every exercise. The grey numbers in each set are a suggested deload weight. Same exercises, same reps, clean form. This lets your body recover so you come back stronger next week.</p></div>`;
@@ -449,6 +450,23 @@
         : '<div><button class="btn ghost sm" data-act="plan-edit">Fix a mistake in this plan</button></div>'}`;
   }
 
+  const hasMeas = (m) => !!m && MEAS.some(([k]) => num(m[k]));
+  function measCard(b) {
+    const lu = state.profile.lengthUnit;
+    const m = (b.startStats && b.startStats.meas) || {};
+    const has = hasMeas(m);
+    return `<section class="card" id="meas-card"><h2>Starting measurements</h2>
+      <p class="muted" style="font-size:.88rem">${has ? `Block ${b.n} starting point. You can update these if you measured a little late.` : `Add these whenever it suits you, like a week when you feel your usual self. They become your Block ${b.n} starting point.`}</p>
+      <div class="grid2">${MEAS.map(([k, l]) => unitInput('f-bm-' + k, `data-bmeas="${k}"`, m[k] || '', lu, l)).join('')}</div>
+      ${b.startStats && b.startStats.measDate ? `<p class="hint">Measured ${fmtDate(b.startStats.measDate)}</p>` : ''}
+    </section>`;
+  }
+  function measNudge(b) {
+    if (hasMeas(b.startStats && b.startStats.meas)) return '';
+    if (state.measNudgeUntil && todayISO() < state.measNudgeUntil) return '';
+    return `<section class="card flat"><h3>Starting measurements</h3><p class="muted" style="font-size:.88rem">Add them when you're ready. No rush.</p><div class="btnrow"><button class="btn sm primary" data-act="meas-go">Add now</button><button class="btn sm ghost" data-act="meas-later">Remind me next week</button></div></section>`;
+  }
+
   function viewMe() {
     const p = state.profile;
     const b = curBlock();
@@ -465,6 +483,7 @@
     return `<section class="card"><h1>Hi, ${esc(p.name)}</h1><p class="muted">Block ${b.n} started ${fmtDate(b.startDate)}.</p></section>
       ${needsCheckin() ? checkinBanner() : ''}
       <section class="card"><h2>Daily targets</h2>${macroHTML(p)}</section>
+      ${measCard(b)}
       <section class="card"><h2>This block</h2><div class="wgrid">${grid}</div><p class="muted" style="font-size:.82rem">Green dots are completed days. D marks a deload week.</p></section>
       <section class="card"><h2>Check-ins</h2>
         <div class="tablewrap"><table><thead><tr><th>Block</th><th>Date</th><th>Weight</th>${MEAS.map(([, l]) => `<th>${l} (${lu})</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
@@ -575,6 +594,8 @@
         ensureDay(iso).bonus.push({ type, min, note });
         save(); break;
       }
+      case 'meas-go': ui.view = 'me'; render(); document.getElementById('meas-card')?.scrollIntoView(); return;
+      case 'meas-later': state.measNudgeUntil = addDays(todayISO(), 7); save(); break;
       case 'bonus-rm': {
         const dd = dayData(ui.calDate || todayISO());
         if (dd) { dd.bonus.splice(+t.dataset.i, 1); save(); }
@@ -602,6 +623,15 @@
     const t = e.target;
     if (t.dataset.draft && ui.draft) { ui.draft[t.dataset.draft] = t.value; updatePreview(); return; }
     if (t.dataset.meas && ui.draft) { ui.draft.meas = ui.draft.meas || {}; ui.draft.meas[t.dataset.meas] = t.value; return; }
+    if (t.dataset.bmeas) {
+      const b = curBlock(); b.startStats = b.startStats || {};
+      b.startStats.meas = b.startStats.meas || {};
+      b.startStats.meas[t.dataset.bmeas] = t.value.trim();
+      b.startStats.lengthUnit = state.profile.lengthUnit;
+      b.startStats.measDate = todayISO();
+      state.profile.meas = { ...(state.profile.meas || {}), [t.dataset.bmeas]: t.value.trim() };
+      save(); return;
+    }
     if (t.dataset.dayfield) { ensureDay(ui.calDate || todayISO())[t.dataset.dayfield] = t.value.trim(); save(); return; }
     if (!ui.ctx) return;
     const { n, w, d } = ui.ctx;
