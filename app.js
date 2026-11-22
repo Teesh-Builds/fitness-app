@@ -405,7 +405,7 @@
       </section>
       ${standalone ? '' : `<section class="card flat"><h3>Add to your home screen</h3><p class="muted" style="font-size:.88rem">iPhone (Safari): tap Share, then Add to Home Screen. Android (Chrome): tap the ⋮ menu, then Install app or Add to Home screen.</p></section>`}
       <section class="card"><h2>Settings</h2>
-        <div class="btnrow"><button class="btn" data-act="edit-profile">Edit profile &amp; units</button><button class="btn" data-act="checkin-start">Finish Block ${b.n}</button></div>
+        <div class="btnrow"><button class="btn" data-act="edit-profile">Edit profile &amp; units</button><button class="btn" data-act="show-welcome">How Lift Block works</button><button class="btn" data-act="checkin-start">Finish Block ${b.n}</button></div>
         <h3>Backup</h3>
         <p class="muted" style="font-size:.88rem">Your data is saved only in this browser on this device. Export a backup file now and then, or to move to a new phone.</p>
         <div class="btnrow"><button class="btn" data-act="export">Export backup</button><label class="btn filebtn">Import backup<input type="file" accept="application/json,.json" data-import></label></div>
@@ -418,7 +418,27 @@
   }
 
   /* ---------- render ---------- */
+  function renderWelcome() {
+    const steps = [
+      ['Pick your 6 moves', 'One each: Squat, Bend, Push, Pull, Single Leg, Core.'],
+      ['Lock in for 12 weeks', '3 full-body days a week. Same moves. Get stronger.'],
+      ['Deload in weeks 6 and 12', 'Drop to about 60% of last week\'s weight and recover.'],
+      ['Level up', 'After 12 weeks, check in, pick new moves, go again.'],
+    ];
+    return `<div class="welcome"><div class="welcome-in">
+      <p class="eyebrow">For the busy body</p>
+      <h1>Life's busy.<br>Your gym plan <span class="hl">shouldn't be.</span></h1>
+      <p class="welcome-lede">3 days a week. Full body. Zero guesswork.</p>
+      <ol class="wsteps">${steps.map(([t, s], i) => `<li><span class="wn">${i + 1}</span><span><b>${t}</b><small>${s}</small></span></li>`).join('')}</ol>
+      <p class="welcome-tag">Simple plan. Consistent action. Real results.</p>
+      <button class="btn primary block big" data-act="welcome-go">${state ? 'Back to my plan' : 'I\'m ready for Lift Block'}</button>
+      <p class="welcome-note">Your data stays on your phone.</p>
+    </div></div>`;
+  }
+
   function render() {
+    if (ui.showWelcome) { app.innerHTML = renderWelcome(); return; }
+    if (!state && !ui.welcomed) { app.innerHTML = renderWelcome(); return; }
     if (!state && ui.flow !== 'onboard') startFlow('onboard');
     else if (state && !ui.flow && needsCheckin() && !ui.checkinLater) startFlow('checkin');
     app.innerHTML = ui.flow ? renderFlow() : renderShell();
@@ -474,12 +494,14 @@
         snapshotEx(log, d);
         save(); break;
       }
+      case 'welcome-go': ui.welcomed = true; ui.showWelcome = false; top(); break;
+      case 'show-welcome': ui.showWelcome = true; top(); break;
       case 'export': exportData(); break;
       case 'reset-ask': ui.confirmReset = true; break;
       case 'reset-no': ui.confirmReset = false; break;
       case 'reset-yes':
         try { localStorage.removeItem(KEY); } catch (err) { /* ignore */ }
-        state = null; ui.confirmReset = false; ui.view = 'today'; ui.week = null; ui.day = null; ui.checkinLater = false; top(); break;
+        state = null; ui.welcomed = false; ui.flow = null; ui.confirmReset = false; ui.view = 'today'; ui.week = null; ui.day = null; ui.checkinLater = false; top(); break;
       default: return;
     }
     render();

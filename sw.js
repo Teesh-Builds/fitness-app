@@ -1,5 +1,5 @@
 // Bump VERSION whenever you change any app file so phones pick up the update.
-const VERSION = 'liftblock-v4';
+const VERSION = 'liftblock-v5';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
