@@ -13,7 +13,7 @@
   const FLOWS = {
     onboard: { title: 'Set up', steps: ['units', 'body', 'targets', 'plan'], finish: 'Start my plan' },
     edit: { title: 'Edit profile', steps: ['units', 'body', 'targets'], finish: 'Save' },
-    checkin: { title: `Week ${WEEKS + 1} check-in`, steps: ['body', 'targets', 'plan'], finish: 'Start next 12 weeks' },
+    checkin: { title: 'Finish block & check in', steps: ['body', 'targets', 'plan'], finish: 'Start next 12 weeks' },
   };
 
   const app = document.getElementById('app');
@@ -302,6 +302,10 @@
     return `<div class="banner info"><strong>Week ${WEEKS + 1}: time for your check-in</strong><p>You've finished 12 weeks. Update your weight and measurements, then pick your exercises for the next block.</p><div><button class="btn primary sm" data-act="checkin-start">Start check-in</button></div></div>`;
   }
 
+  function finishBanner(b) {
+    return `<div class="banner info"><strong>🎉 Week ${WEEKS} done. Time to finish Block ${b.n}</strong><p>You completed all 3 workouts this week. Finish Block ${b.n} to update your weight and measurements and pick new exercises for Block ${b.n + 1}.</p><div><button class="btn primary sm" data-act="checkin-start">Finish Block ${b.n}</button></div></div>`;
+  }
+
   function viewToday() {
     const b = curBlock();
     const now = Math.min(weekNow(b), WEEKS);
@@ -320,6 +324,7 @@
 
     let banner = '';
     if (needsCheckin()) banner += checkinBanner();
+    else if (w === WEEKS && daysDone(b.n, WEEKS) === 3) banner += finishBanner(b);
     if (deload) banner += `<div class="banner deload"><strong>Deload week: lower your weights</strong><p>Use about 60% of the weight you lifted last week on every exercise. The grey numbers in each set are a suggested deload weight. Same exercises, same reps, clean form. This lets your body recover so you come back stronger next week.</p></div>`;
     else if (isDeload(w + 1)) banner += `<div class="banner deload"><strong>Heads up: week ${w + 1} is a deload week</strong><p>Push this week. Next week you'll lower your weights to recover.</p></div>`;
 
@@ -359,7 +364,8 @@
         </div>
       </section>
       <section class="card"><label class="field" for="f-notes">Notes<small>How did it feel? Anything you noticed?</small><textarea id="f-notes" data-field="notes" placeholder="e.g. Left knee felt better. Go up 5 lb on squats next week.">${esc(log?.notes || '')}</textarea></label></section>
-      <button class="btn block ${log?.done ? 'done' : 'primary'}" data-act="toggle-done">${log?.done ? `✓ Day ${d} complete` : `Mark Day ${d} complete`}</button>`;
+      <button class="btn block ${log?.done ? 'done' : 'primary'}" data-act="toggle-done">${log?.done ? `✓ Day ${d} complete` : `Mark Day ${d} complete`}</button>
+      ${w === WEEKS && !needsCheckin() ? `<section class="card flat"><h3>Last week of Block ${b.n}</h3><p class="muted" style="font-size:.88rem">When you've finished this week's workouts, finish the block to check in and pick your next exercises.</p><div><button class="btn" data-act="checkin-start">Finish Block ${b.n}</button></div></section>` : ''}`;
   }
 
   function viewPlan() {
@@ -399,7 +405,7 @@
       </section>
       ${standalone ? '' : `<section class="card flat"><h3>Add to your home screen</h3><p class="muted" style="font-size:.88rem">iPhone (Safari): tap Share, then Add to Home Screen. Android (Chrome): tap the ⋮ menu, then Install app or Add to Home screen.</p></section>`}
       <section class="card"><h2>Settings</h2>
-        <div class="btnrow"><button class="btn" data-act="edit-profile">Edit profile &amp; units</button><button class="btn" data-act="checkin-start">${needsCheckin() ? 'Start week 13 check-in' : 'Finish block early'}</button></div>
+        <div class="btnrow"><button class="btn" data-act="edit-profile">Edit profile &amp; units</button><button class="btn" data-act="checkin-start">Finish Block ${b.n}</button></div>
         <h3>Backup</h3>
         <p class="muted" style="font-size:.88rem">Your data is saved only in this browser on this device. Export a backup file now and then, or to move to a new phone.</p>
         <div class="btnrow"><button class="btn" data-act="export">Export backup</button><label class="btn filebtn">Import backup<input type="file" accept="application/json,.json" data-import></label></div>
@@ -464,6 +470,7 @@
       case 'toggle-done': {
         const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d);
         log.done = !log.done; ui.day = d;
+        if (log.done && w === WEEKS && daysDone(n, WEEKS) === 3) window.scrollTo(0, 0);
         snapshotEx(log, d);
         save(); break;
       }
