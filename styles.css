@@ -300,3 +300,16 @@ th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .blist small { display: block; color: var(--muted); }
 .bform { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .bform .bnote { grid-column: 1 / -1; }
+
+/* activity level picker */
+.actpick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.actpick button {
+  appearance: none; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 10px;
+  padding: 8px 4px; cursor: pointer; display: grid; gap: 2px; justify-items: center; font: 600 0.9rem var(--f-body);
+}
+.actpick button small { font-size: 0.68rem; color: var(--muted); font-weight: 500; }
+.actpick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.actpick button[aria-pressed="true"] small { color: var(--accent-ink); }
+.dcal { font-size: 0.9rem; }
+.dcal b { font-family: var(--f-display); font-size: 1.1rem; }
+.field .seg { justify-self: start; }

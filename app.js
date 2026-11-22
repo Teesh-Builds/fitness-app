@@ -65,22 +65,59 @@
 
   /* ---------- macros ---------- */
   const toLb = (w, unit) => (unit === 'kg' ? w * LB_PER_KG : w);
-  function macros(p) {
-    const cur = num(p.weight), goal = num(p.goalWeight);
-    if (!cur) return null;
-    const lb = toLb(cur, p.weightUnit);
-    const g = goal ? Math.round(toLb(goal, p.weightUnit)) : null;
-    const f = p.factor || 12;
-    return { low: Math.round(lb * 10), high: Math.round(lb * 12), target: Math.round(lb * f), factor: f, protein: g, mealLow: g ? Math.round(g / 5) : null, mealHigh: g ? Math.round(g / 3) : null };
+  // Daily activity levels. Calories = Mifflin-St Jeor BMR × activity multiplier, then adjusted for the goal.
+  const ACTIVITY = {
+    light: { label: 'Lightly Active', mult: 1.25, desc: 'Mostly sitting, little exercise.', ex: 'Desk job, limited walking.', steps: 'Under 5,000 steps' },
+    moderate: { label: 'Moderately Active', mult: 1.5, desc: 'Regular movement with some workouts.', ex: 'Frequent walking, 3–4 workouts a week.', steps: '5,000–10,000 steps' },
+    very: { label: 'Very Active', mult: 1.75, desc: 'Lots of movement or intense training.', ex: 'Intense workouts, physical job, lots of walking.', steps: '10,000+ steps' },
+  };
+  const GOALS = {
+    lose: { label: 'Lose fat', sub: 'About 20% under maintenance (max 500 a day)' },
+    maintain: { label: 'Maintain', sub: 'Eat at maintenance' },
+    gain: { label: 'Build muscle', sub: '250 over maintenance' },
+  };
+  function heightCmOf(p) {
+    if (p.heightUnit === 'cm') return num(p.heightCm);
+    const ft = num(p.heightFt); if (!ft) return null;
+    return (ft * 12 + (num(p.heightIn) || 0)) * 2.54;
   }
-  function macroHTML(p) {
-    const m = macros(p);
-    if (!m) return '<p class="muted">Enter your current and goal weight to see your targets.</p>';
-    return `<div class="targets">
-      <div class="stat"><span class="eyebrow">Calories / day</span><span class="big">${m.target.toLocaleString()}</span><span class="sub">Range ${m.low.toLocaleString()}–${m.high.toLocaleString()} · using ×${m.factor}</span></div>
+  const activityFor = (iso) => (state && state.daily && state.daily[iso] && state.daily[iso].activity) || (state && state.profile.activity) || 'moderate';
+  function macros(p, actKey) {
+    const cur = num(p.weight), goal = num(p.goalWeight), age = num(p.age), cm = heightCmOf(p);
+    const g = goal ? Math.round(toLb(goal, p.weightUnit)) : null;
+    const protein = { protein: g, mealLow: g ? Math.round(g / 5) : null, mealHigh: g ? Math.round(g / 3) : null };
+    if (!cur || !age || !cm || !p.sex) return { missing: true, ...protein };
+    const kg = p.weightUnit === 'kg' ? cur : cur / LB_PER_KG;
+    const bmr = 10 * kg + 6.25 * cm - 5 * age + (p.sex === 'male' ? 5 : -161);
+    const a = ACTIVITY[actKey || p.activity || 'moderate'];
+    const tdee = bmr * a.mult;
+    const goalKey = p.goal || 'lose';
+    const floor = p.sex === 'male' ? 1500 : 1200;
+    let target = tdee;
+    if (goalKey === 'lose') target = Math.max(floor, tdee - Math.min(500, tdee * 0.2));
+    if (goalKey === 'gain') target = tdee + 250;
+    const r10 = (n) => Math.round(n / 10) * 10;
+    return { target: r10(target), tdee: r10(tdee), bmr: Math.round(bmr), act: a, goalKey, ...protein };
+  }
+  function macroHTML(p, actKey, label = 'Calories / day') {
+    const m = macros(p, actKey);
+    const cal = m.missing
+      ? `<div class="stat"><span class="eyebrow">${label}</span><span class="sub">Add your age, sex, height and weight to see calories.</span></div>`
+      : `<div class="stat"><span class="eyebrow">${label}</span><span class="big">${m.target.toLocaleString()}</span><span class="sub">${m.act.label} · ${GOALS[m.goalKey].label}<br>Maintenance ${m.tdee.toLocaleString()}</span></div>`;
+    return `<div class="targets">${cal}
       <div class="stat"><span class="eyebrow">Protein / day</span><span class="big">${m.protein ?? '–'}<small> g</small></span><span class="sub">${m.protein ? `${m.mealLow}–${m.mealHigh} g per meal over 3–5 meals` : 'Add a goal weight'}</span></div>
     </div>
-    <p class="tip">If fat loss stalls for 2+ weeks, eat about 100–150 fewer calories a day and/or add daily steps, then reassess.</p>`;
+    ${(p.goal || 'lose') === 'lose' ? '<p class="tip">If fat loss stalls for 2+ weeks, eat about 100–150 fewer calories a day and/or add daily steps, then reassess.</p>' : ''}`;
+  }
+  function activityPicker(iso, compact) {
+    const cur = activityFor(iso);
+    return `<div class="actpick" role="group" aria-label="Activity level">${Object.entries(ACTIVITY).map(([k, a]) => `<button data-act="day-activity" data-date="${iso}" data-v="${k}" aria-pressed="${k === cur}"><b>${a.label.replace(' Active', '')}</b><small>${a.steps}</small></button>`).join('')}</div>`;
+  }
+  function dayTargets(iso, title) {
+    const m = macros(state.profile, activityFor(iso));
+    return `<section class="card"><div class="segrow"><h3>${title}</h3>${m.missing ? '' : `<span class="dcal num"><b>${m.target.toLocaleString()}</b> cal · <b>${m.protein ?? '–'}</b> g protein</span>`}</div>
+      ${activityPicker(iso)}
+      ${m.missing ? `<p class="hint">Add your age and sex to see your calorie target. <button class="btn sm ghost" data-act="edit-profile">Add now</button></p>` : `<p class="hint">Pick how active you are today. Calories update automatically.</p>`}</section>`;
   }
 
   /* ---------- drafts & units ---------- */
@@ -91,7 +128,7 @@
     return Object.fromEntries(CATS.map((c) => [c.key, c.options[0].id]));
   }
   function newDraft() {
-    return { name: '', weightUnit: 'lb', heightUnit: 'ftin', lengthUnit: 'in', weight: '', goalWeight: '', heightFt: '', heightIn: '', heightCm: '', meas: {}, factor: 12, startDate: todayISO(), plan: defaultPlan() };
+    return { name: '', weightUnit: 'lb', heightUnit: 'ftin', lengthUnit: 'in', weight: '', goalWeight: '', heightFt: '', heightIn: '', heightCm: '', meas: {}, age: '', sex: '', activity: 'moderate', goal: 'lose', startDate: todayISO(), plan: defaultPlan() };
   }
   function profileFrom(d) {
     const { plan, startDate, prev, ...p } = d;
@@ -166,6 +203,8 @@
     if (step === 'body') {
       if (!(num(d.weight) > 0)) return 'Enter your current weight.';
       if (!(num(d.goalWeight) > 0)) return 'Enter your goal weight.';
+      if (!(num(d.age) > 0)) return 'Enter your age.';
+      if (!d.sex) return 'Choose female or male for the calorie formula.';
       if (ui.flow !== 'checkin') {
         const ok = d.heightUnit === 'cm' ? num(d.heightCm) > 0 : num(d.heightFt) > 0;
         if (!ok) return 'Enter your height.';
@@ -209,11 +248,12 @@
       const ci = ui.flow === 'checkin';
       const prev = d.prev || {};
       const wu = d.weightUnit, lu = d.lengthUnit;
-      return `${ci ? `<h1>You finished ${WEEKS} weeks</h1><p class="lede">Update your weight and measurements. Your targets will be recalculated, then you'll pick exercises for the next 12 weeks.</p>` : '<h1>Your body today</h1><p class="lede">Current weight sets calories. Goal weight sets protein.</p>'}
+      return `${ci ? `<h1>You finished ${WEEKS} weeks</h1><p class="lede">Update your weight and measurements. Your targets will be recalculated, then you'll pick exercises for the next 12 weeks.</p>` : '<h1>Your body today</h1><p class="lede">These set your calorie and protein targets.</p>'}
         <div class="grid2">
           ${unitInput('f-weight', 'data-draft="weight"', d.weight, wu, 'Current weight', ci && prev.weight ? `Last: ${prev.weight}` : '')}
           ${unitInput('f-goal', 'data-draft="goalWeight"', d.goalWeight, wu, 'Goal weight')}
         </div>
+        <div class="grid2">${unitInput('f-age', 'data-draft="age"', d.age || '', 'yrs', 'Age')}<div class="field">Sex<small>Used in the calorie formula</small>${seg('sex', d.sex, [['female', 'Female'], ['male', 'Male']])}</div></div>
         ${ci ? '' : `<div>${d.heightUnit === 'cm'
           ? unitInput('f-hcm', 'data-draft="heightCm"', d.heightCm, 'cm', 'Height')
           : `<div class="grid2">${unitInput('f-hft', 'data-draft="heightFt"', d.heightFt, 'ft', 'Height')}${unitInput('f-hin', 'data-draft="heightIn"', d.heightIn, 'in', '&nbsp;')}</div>`}</div>`}
@@ -224,15 +264,14 @@
         </div>`;
     },
     targets(d) {
-      const opt = (f, t, s) => `<label class="radio"><input type="radio" name="factor" value="${f}" data-draft-radio="factor"${d.factor === f ? ' checked' : ''}><span><b>${t} (×${f})</b><small>${s}</small></span></label>`;
+      const radio = (name, k, t, sub) => `<label class="radio"><input type="radio" name="${name}" value="${k}" data-draft-radio="${name}"${(d[name] || '') === k ? ' checked' : ''}><span><b>${t}</b><small>${sub}</small></span></label>`;
       return `<h1>Your daily targets</h1>
-        <p class="lede">Calories are your bodyweight in lb × 10–12. Protein is 1 g per lb of your goal weight.</p>
-        <div style="display:grid;gap:8px">
-          ${opt(12, 'Newer to dieting', 'Less active day to day, or more to lose')}
-          ${opt(11, 'Somewhere in between', 'Middle of the range')}
-          ${opt(10, 'Already fairly lean', 'Very active, or have been dieting a while')}
-        </div>
-        <div class="card" id="macro-preview">${macroHTML(d)}</div>`;
+        <p class="lede">Pick your goal and your usual activity level. You can change the activity level any day in the app.</p>
+        <h3>Goal</h3>
+        <div style="display:grid;gap:8px">${Object.entries(GOALS).map(([k, g]) => radio('goal', k, g.label, g.sub)).join('')}</div>
+        <h3>Usual activity level</h3>
+        <div style="display:grid;gap:8px">${Object.entries(ACTIVITY).map(([k, a]) => radio('activity', k, a.label, `${a.desc} ${a.ex} ${a.steps}.`)).join('')}</div>
+        <div class="card" id="macro-preview">${macroHTML(d, d.activity)}</div>`;
     },
     plan(d) {
       return `<h1>${ui.flow === 'checkin' ? 'Pick your next 12 weeks' : 'Build your 3-day plan'}</h1>
@@ -332,6 +371,7 @@
         <div class="legend"><span><i class="lg lift"></i>Lift day done</span><span><i class="lg bonus"></i>Bonus workout</span></div>
         <p class="muted num" style="font-size:.85rem">This month: ${nLift} lift day${nLift === 1 ? '' : 's'} · ${nBonus} bonus workout${nBonus === 1 ? '' : 's'}${stepDays ? ` · ${Math.round(stepSum / stepDays).toLocaleString()} avg steps` : ''}</p>
       </section>
+      ${future ? '' : dayTargets(sel, 'Activity that day')}
       <section class="card">
         <h2>${parseISO(sel).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
         ${selLifts.length ? selLifts.map((t) => `<p class="liftdone">✓ ${esc(t)}</p>`).join('') : `<p class="muted" style="font-size:.88rem">${future ? 'Coming up.' : 'No lift day logged. Rest days are a great time for a bonus workout.'}</p>`}
@@ -418,6 +458,7 @@
     }).join('');
 
     return `${banner}
+      ${dayTargets(todayISO(), "Today's activity")}
       <section class="card"><div class="segrow"><h2>Week ${w}${w === now ? '' : ` <small class="muted">(this week is ${now})</small>`}</h2><span class="muted num">${fmtDate(addDays(b.startDate, (w - 1) * 7))}</span></div><div class="weeks">${weekBtns}</div></section>
       <div class="days" role="group" aria-label="Day">${[1, 2, 3].map((n) => `<button data-act="day" data-d="${n}" aria-pressed="${n === d}">Day ${n}${getLog(b.n, w, n)?.done ? ' <span class="ok">✓</span>' : ''}</button>`).join('')}</div>
       <section class="card"><h3>Warm up</h3>
@@ -482,7 +523,7 @@
     const standalone = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone;
     return `<section class="card"><h1>Hi, ${esc(p.name)}</h1><p class="muted">Block ${b.n} started ${fmtDate(b.startDate)}.</p></section>
       ${needsCheckin() ? checkinBanner() : ''}
-      <section class="card"><h2>Daily targets</h2>${macroHTML(p)}</section>
+      <section class="card"><h2>Today's targets</h2>${macroHTML(p, activityFor(todayISO()), 'Calories today')}<p class="hint">Goal: ${GOALS[p.goal || 'lose'].label}. Usual activity: ${ACTIVITY[p.activity || 'moderate'].label}. Change these in Edit profile.</p></section>
       ${measCard(b)}
       <section class="card"><h2>This block</h2><div class="wgrid">${grid}</div><p class="muted" style="font-size:.82rem">Green dots are completed days. D marks a deload week.</p></section>
       <section class="card"><h2>Check-ins</h2>
@@ -533,7 +574,7 @@
   /* ---------- events ---------- */
   function updatePreview() {
     const el = document.getElementById('macro-preview');
-    if (el && ui.draft) el.innerHTML = macroHTML(ui.draft);
+    if (el && ui.draft) el.innerHTML = macroHTML(ui.draft, ui.draft.activity);
   }
 
   app.addEventListener('click', (e) => {
@@ -596,6 +637,7 @@
       }
       case 'meas-go': ui.view = 'me'; render(); document.getElementById('meas-card')?.scrollIntoView(); return;
       case 'meas-later': state.measNudgeUntil = addDays(todayISO(), 7); save(); break;
+      case 'day-activity': ensureDay(t.dataset.date).activity = t.dataset.v; save(); break;
       case 'bonus-rm': {
         const dd = dayData(ui.calDate || todayISO());
         if (dd) { dd.bonus.splice(+t.dataset.i, 1); save(); }
@@ -647,7 +689,7 @@
 
   app.addEventListener('change', (e) => {
     const t = e.target;
-    if (t.dataset.draftRadio && ui.draft) { ui.draft[t.dataset.draftRadio] = +t.value; updatePreview(); return; }
+    if (t.dataset.draftRadio && ui.draft) { ui.draft[t.dataset.draftRadio] = t.value; updatePreview(); return; }
     if (t.hasAttribute('data-plan')) {
       if (t.dataset.src === 'draft') ui.draft.plan[t.dataset.cat] = t.value;
       else { const b = curBlock(); b.plan = planOf(b); b.plan[t.dataset.cat] = t.value; }
