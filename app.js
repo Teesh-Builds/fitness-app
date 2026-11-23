@@ -518,7 +518,7 @@
       <section class="card"><h3>Warm up</h3>
         ${chk('warmup', '1. Cardio warm-up', '5–10 minutes, easy pace')}
         <div class="stretches"><p class="stitle">2. Dynamic stretches <small>Keep moving, don't hold. Do them in this order.</small></p>
-          ${STRETCHES.map((x, i) => `<label class="check sub"><input type="checkbox" data-stretch="${esc(x.id)}"${log?.stretch?.[x.id] ? ' checked' : ''}><span><a href="${esc(videoUrl(x))}" target="_blank" rel="noopener">${esc(x.name)}</a><b>${esc(x.dose)}</b><small>${esc(x.why)}</small></span></label>`).join('')}
+          ${STRETCHES.map((x, i) => `<label class="check sub"><input type="checkbox" data-stretch="${esc(x.id)}"${log?.stretch?.[x.id] ? ' checked' : ''}><span><a href="${esc(videoUrl(x))}" target="_blank" rel="noopener">${esc(x.name)}</a><b>${esc(x.dose)}</b><small>${esc(x.why)}</small></span></label>${x.img ? `<details class="seehow"><summary>See how: ${esc(x.name)}</summary><img src="${esc(x.img)}" alt="${esc(x.name)}: ${esc(x.why)}" loading="lazy" width="540" height="959"></details>` : ''}`).join('')}
         </div>
         ${chk('dynamic', '3. Warm-up sets', '1–2 light sets per body part before your working sets')}
       </section>

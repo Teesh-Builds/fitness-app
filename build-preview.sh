@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
   echo '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,600..800&family=Inter:wght@400;600;700&display=swap">'
   echo '<style>'; cat styles.css; echo '</style>'
   echo '<div id="app"></div>'
-  echo '<script>'; cat exercises.js; echo '</script>'
+  echo '<script>'; python3 inline-images.py; echo '</script>'
   echo '<script>'; cat xlsx.js; echo '</script>'
   echo '<script>'; cat app.js; echo '</script>'
 } > preview.html

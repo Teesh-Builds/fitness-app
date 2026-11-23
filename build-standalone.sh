@@ -26,7 +26,7 @@ cat styles.css
 echo '</style>'; echo '</head>'; echo '<body>'; echo '<div id="app"></div>'
 echo '<noscript>Lift Block needs JavaScript turned on.</noscript>'
 echo '<!-- ===== EXERCISE LIST (edit here) ===== -->'
-echo '<script>'; cat exercises.js; echo '</script>'
+echo '<script>'; python3 inline-images.py; echo '</script>'
 echo '<script>'; cat xlsx.js; echo '</script>'
 echo '<!-- ===== APP CODE ===== -->'
 echo '<script>'; cat app.js; echo '</script>'
