@@ -348,7 +348,7 @@
   /* ---------- plan builder ---------- */
   function planBuilder(plan, src) {
     return `<section class="card">
-      <div class="prow"><span class="cat">Warm up</span><span class="warmline">Cardio 5–10 min, 5 dynamic stretches, then 1–2 light warm-up sets per body part</span></div>
+      <div class="prow"><span class="cat">Warm up</span><span class="warmline">Cardio 5–10 min, then 5 dynamic stretches</span></div>
       ${CATS.map((c) => {
         const e = findEx(plan[c.key]);
         return `<div class="prow"><label class="cat" for="p-${src}-${c.key}">${esc(c.label)}</label><div class="pick">
@@ -364,7 +364,7 @@
 
   function planSummary(plan) {
     return `<section class="card">
-      <div class="prow"><span class="cat">Warm up</span><span class="warmline">Cardio 5–10 min, 5 dynamic stretches, then 1–2 light warm-up sets per body part</span></div>
+      <div class="prow"><span class="cat">Warm up</span><span class="warmline">Cardio 5–10 min, then 5 dynamic stretches</span></div>
       ${CATS.map((c) => { const e = findEx(plan[c.key]); return `<div class="prow"><span class="cat">${esc(c.label)}</span><div class="pick">${exLink(plan[c.key])}${e?.detail ? `<span class="detail">${esc(e.detail)}</span>` : ''}</div></div>`; }).join('')}
     </section>`;
   }
@@ -528,9 +528,8 @@
       <section class="card"><h3>Warm up</h3>
         ${chk('warmup', '1. Cardio warm-up', '5–10 minutes, easy pace')}
         <div class="stretches"><p class="stitle">2. Dynamic stretches <small>Keep moving, don't hold. Do them in this order.</small></p>
-          ${STRETCHES.map((x, i) => `<label class="check sub"><input type="checkbox" data-stretch="${esc(x.id)}"${log?.stretch?.[x.id] ? ' checked' : ''}><span><a href="${esc(videoUrl(x))}" target="_blank" rel="noopener">${esc(x.name)}</a><b>${esc(x.dose)}</b><small>${esc(x.why)}</small></span></label>${x.img ? `<details class="seehow"><summary>See how: ${esc(x.name)}</summary><img src="${esc(x.img)}" alt="${esc(x.name)}: ${esc(x.why)}" loading="lazy" width="540" height="959"></details>` : ''}`).join('')}
+          ${STRETCHES.map((x) => { const open = ui.stretchOpen === x.id; return `<div class="stretch"><div class="srow"><input type="checkbox" id="st-${esc(x.id)}" data-stretch="${esc(x.id)}"${log?.stretch?.[x.id] ? ' checked' : ''} aria-label="${esc(x.name)} done"><div class="sbody"><button class="sname" data-act="stretch-img" data-id="${esc(x.id)}" aria-expanded="${open}">${esc(x.name)}<span class="sicon" aria-hidden="true">${open ? '▾' : '▸'} photo</span></button><label for="st-${esc(x.id)}"><b>${esc(x.dose)}</b><small>${esc(x.why)}</small></label></div></div>${open && x.img ? `<img class="simg" src="${esc(x.img)}" alt="${esc(x.name)}: ${esc(x.why)}" width="540" height="959">` : ''}</div>`; }).join('')}
         </div>
-        ${chk('dynamic', '3. Warm-up sets', '1–2 light sets per body part before your working sets')}
       </section>
       ${exCards}
       <section class="card"><div class="exhead"><span class="cat">Cardio</span>${cardioEx ? exLink(cardioEx.id) : ''}${cardioEx?.detail ? `<span class="detail">${esc(cardioEx.detail)}</span>` : ''}</div>
@@ -675,6 +674,7 @@
       case 'edit-profile': startFlow('edit'); break;
       case 'plan-edit': ui.editPlan = true; break;
       case 'plan-done': ui.editPlan = false; break;
+      case 'stretch-img': ui.stretchOpen = ui.stretchOpen === t.dataset.id ? null : t.dataset.id; break;
       case 'swap-open': ui.swapOpen = t.dataset.cat; break;
       case 'swap-close': ui.swapOpen = null; break;
       case 'swap-block': {
@@ -829,7 +829,7 @@
     const weekStart = (n, w) => { const b = blockOf(n); return b ? addDays(b.startDate, (w - 1) * 7) : ''; };
 
     const sets = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Completed on', 'Movement', 'Exercise', 'Set', `Weight (${wu})`, 'Reps', 'Left reps', 'Right reps', 'Swapped (plan exercise)']];
-    const days = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Day complete', 'Completed on', 'Cardio warm-up', 'Dynamic stretches done', 'Warm-up sets', 'Cardio', 'Cardio exercise', 'Cardio minutes', 'Notes']];
+    const days = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Day complete', 'Completed on', 'Cardio warm-up', 'Dynamic stretches done', 'Cardio', 'Cardio exercise', 'Cardio minutes', 'Notes']];
     for (const [n, w, d] of keys) {
       const l = state.logs[logKey(n, w, d)], b = blockOf(n);
       const plan = b ? planOf(b) : {};
@@ -843,7 +843,7 @@
         arr.forEach((st, i) => { if (st.w || st.r || st.rl || st.rr) sets.push([n, w, d, yn(isDeload(w)), weekStart(n, w), l.doneDate || '', c.label, findEx(exId)?.name || exId || '', i + 1, v(st.w), c.key === 'single' ? '' : v(st.r), v(st.rl || ''), v(st.rr || ''), swappedFrom]); });
       }
       const cardioId = (l.ex && l.ex.cardio) || plan.cardio;
-      days.push([n, w, d, yn(isDeload(w)), weekStart(n, w), yn(l.done), l.doneDate || '', yn(l.warmup), `${STRETCHES.filter((x) => l.stretch && l.stretch[x.id]).length} of ${STRETCHES.length}`, yn(l.dynamic), yn(l.cardio), findEx(cardioId)?.name || '', v(l.cardioMin), l.notes || '']);
+      days.push([n, w, d, yn(isDeload(w)), weekStart(n, w), yn(l.done), l.doneDate || '', yn(l.warmup), `${STRETCHES.filter((x) => l.stretch && l.stretch[x.id]).length} of ${STRETCHES.length}`, yn(l.cardio), findEx(cardioId)?.name || '', v(l.cardioMin), l.notes || '']);
     }
 
     const daily = [['Date', 'Activity level', 'Calorie target', 'Steps', 'Bonus workout', 'Minutes', 'Note']];
@@ -869,7 +869,7 @@
 
     return window.makeXlsx([
       { name: 'Workout Sets', rows: sets, widths: [7, 6, 5, 11, 13, 13, 11, 26, 5, 12, 6, 10, 11, 22] },
-      { name: 'Lift Days', rows: days, widths: [7, 6, 5, 11, 13, 12, 13, 14, 18, 13, 7, 22, 14, 40] },
+      { name: 'Lift Days', rows: days, widths: [7, 6, 5, 11, 13, 12, 13, 14, 18, 7, 22, 14, 40] },
       { name: 'Bonus & Steps', rows: daily, widths: [12, 18, 13, 9, 15, 9, 30] },
       { name: 'Measurements', rows: meas, widths: [7, 13, 9, 11, 12, 9, 9, 9, 10, 9, 16, 13] },
       { name: 'Plans', rows: plans, widths: [7, 12, 20, 24, 18, 20, 16, 18, 22] },

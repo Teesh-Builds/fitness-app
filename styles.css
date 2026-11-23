@@ -332,9 +332,13 @@ th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .check.sub b { font-weight: 600; font-size: 0.88rem; }
 .stretches + .check { border-top: 1px solid var(--line); }
 .check.sub a { justify-self: start; font-weight: 600; }
-.seehow { margin: -2px 0 6px 50px; }
-.seehow summary { cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--muted); list-style: none; }
-.seehow summary::-webkit-details-marker { display: none; }
-.seehow summary::before { content: "▸ "; color: var(--ink); }
-.seehow[open] summary::before { content: "▾ "; }
-.seehow img { display: block; width: 100%; max-width: 280px; height: auto; margin-top: 8px; border-radius: 12px; border: 1px solid var(--line); background: #f2f2f2; }
+.stretch { padding: 8px 0 8px 14px; display: grid; gap: 8px; }
+.srow { display: flex; gap: 12px; align-items: flex-start; }
+.srow input { width: 22px; height: 22px; accent-color: var(--accent); margin: 2px 0 0; flex: none; }
+.sbody { display: grid; gap: 1px; min-width: 0; }
+.sbody label { display: grid; cursor: pointer; }
+.sbody b { font-weight: 600; font-size: 0.88rem; }
+.sbody small { color: var(--muted); }
+.sname { appearance: none; border: 0; background: none; padding: 0; color: var(--ink); font: 700 0.98rem var(--f-body); text-align: left; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; justify-self: start; }
+.sicon { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: 2px 8px; }
+.simg { display: block; width: 100%; max-width: 300px; height: auto; margin-left: 34px; border-radius: 12px; border: 1px solid var(--line); background: #f2f2f2; }
