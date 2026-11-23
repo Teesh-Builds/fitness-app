@@ -14,6 +14,16 @@ window.EXERCISE_LIBRARY = {
   deloadWeeks: [6, 12],  // deload weeks inside each block
   defaultSets: 3,        // sets shown per exercise before the user adds more
 
+  // Dynamic stretches, done in this order after the cardio warm-up.
+  // Dynamic stretches are done for reps (moving, not held). `dose` is the minimum to do.
+  dynamicStretches: [
+    { id: "toy-soldiers", name: "Toy Soldiers", dose: "10 per leg (about 30 sec)", why: "Lengthens hamstrings and warms up legs", video: "" },
+    { id: "torso-twists", name: "Torso Twists (with a plate)", dose: "10 per side (about 30 sec)", why: "Loosens spine and activates core", video: "" },
+    { id: "leg-swings", name: "Leg Swings", dose: "10 per leg, front to back (about 30 sec)", why: "Mobilizes hips and hamstrings", video: "" },
+    { id: "arm-circles", name: "Arm Circles", dose: "10 forward + 10 backward (about 30 sec)", why: "Opens shoulders and increases blood flow", video: "" },
+    { id: "worlds-greatest-stretch", name: "World's Greatest Stretch", dose: "5 per side (about 60 sec)", why: "Hips, spine and upper-back mobility", video: "" }
+  ],
+
   categories: [
     {
       key: "squat",
