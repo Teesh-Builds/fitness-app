@@ -222,6 +222,13 @@
     }
     return null;
   }
+  // The plan exercise that applied on a given week/day, allowing for "rest of block" swaps made later.
+  function planAt(blk, cat, w, d) {
+    let id = planOf(blk)[cat];
+    const ch = (blk.planChanges || []).filter((x) => x.movement === cat);
+    for (let i = ch.length - 1; i >= 0; i--) if (ch[i].week * 10 + ch[i].day > w * 10 + d) id = ch[i].from;
+    return id;
+  }
   function firstOpenDay(n, w) {
     for (let d = 1; d <= 3; d++) { const l = getLog(n, w, d); if (!l || !l.done) return d; }
     return 1;
@@ -480,7 +487,7 @@
     const chk = (k, t, s) => `<label class="check"><input type="checkbox" data-check="${k}"${log?.[k] ? ' checked' : ''}><span>${t}<small>${s}</small></span></label>`;
 
     const exCards = CATS.filter((c) => c.type !== 'cardio').map((c) => {
-      const planId = plan[c.key];
+      const planId = planAt(b, c.key, w, d);
       const exId = log?.ex?.[c.key] || planId;
       const swapped = exId !== planId;
       const lr = LR(c.key);
@@ -679,7 +686,7 @@
         (blk.planChanges = blk.planChanges || []).push({ date: todayISO(), week: w, day: d, movement: c, from, to });
         ui.swapOpen = null; save(); break;
       }
-      case 'swap-reset': { const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d); log.ex[t.dataset.cat] = planOf(curBlock())[t.dataset.cat]; ui.swapOpen = null; save(); break; }
+      case 'swap-reset': { const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d); log.ex[t.dataset.cat] = planAt(curBlock(), t.dataset.cat, w, d); ui.swapOpen = null; save(); break; }
       case 'add-set':
       case 'rm-set': {
         const { n, w, d } = ui.ctx; const c = t.dataset.cat;
@@ -831,7 +838,8 @@
         const arr = l.sets && l.sets[c.key];
         if (!arr) continue;
         const exId = (l.ex && l.ex[c.key]) || plan[c.key];
-        const swappedFrom = exId !== plan[c.key] ? (findEx(plan[c.key])?.name || '') : '';
+        const pAt = b ? planAt(b, c.key, w, d) : plan[c.key];
+        const swappedFrom = exId !== pAt ? (findEx(pAt)?.name || '') : '';
         arr.forEach((st, i) => { if (st.w || st.r || st.rl || st.rr) sets.push([n, w, d, yn(isDeload(w)), weekStart(n, w), l.doneDate || '', c.label, findEx(exId)?.name || exId || '', i + 1, v(st.w), c.key === 'single' ? '' : v(st.r), v(st.rl || ''), v(st.rr || ''), swappedFrom]); });
       }
       const cardioId = (l.ex && l.ex.cardio) || plan.cardio;
