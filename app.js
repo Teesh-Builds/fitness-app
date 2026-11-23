@@ -493,8 +493,11 @@
       const inp = (i, f, val, mode, label, placeholder) => `<input type="text" inputmode="${mode}" data-set="${c.key}" data-i="${i}" data-f="${f}" value="${esc(val || '')}" placeholder="${esc(placeholder)}" aria-label="${esc(c.label)} set ${i + 1} ${label}" autocomplete="off">`;
       const swapUI = ui.swapOpen === c.key
         ? `<div class="swapbox"><p><strong>We recommend keeping the same exercise.</strong> Sticking with it for all 12 weeks is how you see your progress. Only swap for an injury or if the equipment isn't free.</p>
-            <label class="field" for="sw-${c.key}">Swap for today only<select id="sw-${c.key}" data-swap="${c.key}">${c.options.map((o) => `<option value="${esc(o.id)}"${o.id === exId ? ' selected' : ''}>${esc(o.name)}${o.id === planId ? ' (your plan)' : ''}</option>`).join('')}</select></label>
-            <div><button class="btn sm ghost" data-act="swap-close">Done</button></div></div>`
+            <label class="field" for="sw-${c.key}">Swap to<select id="sw-${c.key}" data-swap="${c.key}">${c.options.map((o) => `<option value="${esc(o.id)}"${o.id === exId ? ' selected' : ''}>${esc(o.name)}${o.id === planId ? ' (your plan)' : ''}</option>`).join('')}</select></label>
+            ${swapped
+              ? `<p class="hint">Now swapped for today only. Want ${esc(findEx(exId)?.name || '')} for every remaining ${esc(c.label)} workout in Block ${b.n}?</p>
+                 <div class="btnrow"><button class="btn sm" data-act="swap-close">Just today</button><button class="btn sm primary" data-act="swap-block" data-cat="${c.key}">Rest of Block ${b.n}</button></div>`
+              : '<div><button class="btn sm ghost" data-act="swap-close">Cancel</button></div>'}</div>`
         : '';
       return `<section class="card${deload ? ' deloadcard' : ''}">
         <div class="exhead"><span class="cat">${esc(c.label)}${swapped ? ' <span class="swaptag">Swapped today</span>' : ''}</span>${exLink(exId)}${e?.detail ? `<span class="detail">${esc(e.detail)}</span>` : ''}
@@ -667,6 +670,15 @@
       case 'plan-done': ui.editPlan = false; break;
       case 'swap-open': ui.swapOpen = t.dataset.cat; break;
       case 'swap-close': ui.swapOpen = null; break;
+      case 'swap-block': {
+        const { n, w, d } = ui.ctx; const c = t.dataset.cat; const blk = curBlock(); const plan = planOf(blk);
+        const to = ensureLog(n, w, d).ex[c]; const from = plan[c];
+        // Keep past workouts tied to what was actually done, then change the plan from here on.
+        for (const [k, l] of Object.entries(state.logs)) if (k.startsWith(blk.n + '-') && l.ex && !l.ex[c]) l.ex[c] = from;
+        blk.plan = plan; plan[c] = to;
+        (blk.planChanges = blk.planChanges || []).push({ date: todayISO(), week: w, day: d, movement: c, from, to });
+        ui.swapOpen = null; save(); break;
+      }
       case 'swap-reset': { const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d); log.ex[t.dataset.cat] = planOf(curBlock())[t.dataset.cat]; ui.swapOpen = null; save(); break; }
       case 'add-set':
       case 'rm-set': {
