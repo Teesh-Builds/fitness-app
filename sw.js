@@ -1,5 +1,5 @@
 // Bump VERSION whenever you change any app file so phones pick up the update.
-const VERSION = 'liftblock-v10';
+const VERSION = 'liftblock-v11';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'xlsx.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -8,11 +8,12 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
-// Network first so edits (like a new exercise list) show up; fall back to cache offline.
+// Network first (skipping the browser's HTTP cache) so every update shows up right away; cache is the offline fallback.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  const same = new URL(e.request.url).origin === location.origin;
   e.respondWith(
-    fetch(e.request).then((res) => {
+    fetch(e.request, same ? { cache: 'no-cache' } : undefined).then((res) => {
       if (res.ok && new URL(e.request.url).origin === location.origin) {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copy));

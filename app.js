@@ -3,6 +3,7 @@
   'use strict';
 
   const KEY = 'liftblock.v1';
+  const DATA_VERSION = 2;
   const LIB = window.EXERCISE_LIBRARY;
   const CATS = LIB.categories;
   const WEEKS = LIB.blockWeeks || 12;
@@ -22,8 +23,24 @@
 
   /* ---------- storage ---------- */
   function load() {
-    try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.blocks && s.blocks.length ? s : null; }
+    try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.blocks && s.blocks.length ? migrate(s) : null; }
     catch (e) { return null; }
+  }
+  // Upgrade saved data from older app versions in place, so nobody has to reset.
+  function migrate(s) {
+    const from = s.version || 1;
+    s.logs = s.logs || {};
+    s.blocks.forEach((b) => { if (Array.isArray(b.plan)) b.plan = b.plan[0]; });
+    if (from < 2) {
+      // Single Leg sets gained separate left/right reps.
+      for (const l of Object.values(s.logs)) {
+        const arr = l.sets && l.sets.single;
+        if (arr) arr.forEach((x) => { if (x.r && !x.rl && !x.rr) { x.rl = x.r; x.rr = x.r; } });
+      }
+    }
+    s.version = DATA_VERSION;
+    try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
+    return s;
   }
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage blocked: keep in memory */ }
@@ -181,6 +198,29 @@
     }
     return null;
   }
+  // Best set from the most recent earlier week (skipping deload weeks) for this exercise, across all 3 days:
+  // highest weight, then highest reps at that weight.
+  const LR = (cat) => cat === 'single';
+  function lastBest(n, w, cat, exId) {
+    for (let ww = w - 1; ww >= 1; ww--) {
+      if (isDeload(ww)) continue;
+      let best = null;
+      for (let d = 1; d <= 3; d++) {
+        const l = getLog(n, ww, d);
+        if (!l || !l.sets || !l.sets[cat] || (l.ex[cat] || planOf(curBlock())[cat]) !== exId) continue;
+        for (const x of l.sets[cat]) {
+          const wt = num(x.w) ?? 0;
+          const reps = LR(cat) ? Math.max(num(x.rl) ?? 0, num(x.rr) ?? 0) : (num(x.r) ?? 0);
+          if (!wt && !reps) continue;
+          const cand = { week: ww, w: wt, r: reps, rl: num(x.rl) ?? 0, rr: num(x.rr) ?? 0 };
+          if (!best || cand.w > best.w || (cand.w === best.w && cand.r > best.r)) best = cand;
+          else if (LR(cat) && cand.w === best.w) { best.rl = Math.max(best.rl, cand.rl); best.rr = Math.max(best.rr, cand.rr); }
+        }
+      }
+      if (best) return best;
+    }
+    return null;
+  }
   function firstOpenDay(n, w) {
     for (let d = 1; d <= 3; d++) { const l = getLog(n, w, d); if (!l || !l.done) return d; }
     return 1;
@@ -216,7 +256,7 @@
   function finishFlow() {
     const d = ui.draft;
     if (ui.flow === 'onboard') {
-      state = { version: 1, created: todayISO(), profile: profileFrom(d), blocks: [{ n: 1, startDate: d.startDate, plan: clone(d.plan), startStats: statsFrom(d) }], logs: {} };
+      state = { version: DATA_VERSION, created: todayISO(), profile: profileFrom(d), blocks: [{ n: 1, startDate: d.startDate, plan: clone(d.plan), startStats: statsFrom(d) }], logs: {} };
     } else if (ui.flow === 'edit') {
       state.profile = profileFrom(d);
     } else if (ui.flow === 'checkin') {
@@ -439,21 +479,34 @@
     const chk = (k, t, s) => `<label class="check"><input type="checkbox" data-check="${k}"${log?.[k] ? ' checked' : ''}><span>${t}<small>${s}</small></span></label>`;
 
     const exCards = CATS.filter((c) => c.type !== 'cardio').map((c) => {
-      const exId = log?.ex?.[c.key] || plan[c.key];
+      const planId = plan[c.key];
+      const exId = log?.ex?.[c.key] || planId;
+      const swapped = exId !== planId;
+      const lr = LR(c.key);
       const sets = log?.sets?.[c.key] || blankSets();
-      const prev = prevSets(b.n, w, d, c.key, exId);
+      const best = lastBest(b.n, w, c.key, exId);
       const e = findEx(exId);
-      const ph = (i) => { const pw = num(prev?.sets[i]?.w); return deload && pw ? String(Math.round(pw * 0.6)) : (prev?.sets[i]?.w || ''); };
+      const dl = (x) => (deload && x ? String(Math.round(x * 0.6)) : x ? String(x) : '');
+      const phW = best ? dl(best.w) : '';
+      const ph = (x) => (best && x ? String(x) : '');
+      const inp = (i, f, val, mode, label, placeholder) => `<input type="text" inputmode="${mode}" data-set="${c.key}" data-i="${i}" data-f="${f}" value="${esc(val || '')}" placeholder="${esc(placeholder)}" aria-label="${esc(c.label)} set ${i + 1} ${label}" autocomplete="off">`;
+      const swapUI = ui.swapOpen === c.key
+        ? `<div class="swapbox"><p><strong>We recommend keeping the same exercise.</strong> Sticking with it for all 12 weeks is how you see your progress. Only swap for an injury or if the equipment isn't free.</p>
+            <label class="field" for="sw-${c.key}">Swap for today only<select id="sw-${c.key}" data-swap="${c.key}">${c.options.map((o) => `<option value="${esc(o.id)}"${o.id === exId ? ' selected' : ''}>${esc(o.name)}${o.id === planId ? ' (your plan)' : ''}</option>`).join('')}</select></label>
+            <div><button class="btn sm ghost" data-act="swap-close">Done</button></div></div>`
+        : '';
       return `<section class="card${deload ? ' deloadcard' : ''}">
-        <div class="exhead"><span class="cat">${esc(c.label)}</span>${exLink(exId)}${e?.detail ? `<span class="detail">${esc(e.detail)}</span>` : ''}</div>
-        <div class="sets">
-          <div class="sethead"><span>Set</span><span>Weight (${unit})</span><span>Reps</span></div>
-          ${sets.map((s, i) => `<div class="set"><span class="setn">${i + 1}</span>
-            <input type="text" inputmode="decimal" data-set="${c.key}" data-i="${i}" data-f="w" value="${esc(s.w)}" placeholder="${esc(ph(i))}" aria-label="${esc(c.label)} set ${i + 1} weight" autocomplete="off">
-            <input type="text" inputmode="numeric" data-set="${c.key}" data-i="${i}" data-f="r" value="${esc(s.r)}" placeholder="${esc(prev?.sets[i]?.r || '')}" aria-label="${esc(c.label)} set ${i + 1} reps" autocomplete="off"></div>`).join('')}
+        <div class="exhead"><span class="cat">${esc(c.label)}${swapped ? ' <span class="swaptag">Swapped today</span>' : ''}</span>${exLink(exId)}${e?.detail ? `<span class="detail">${esc(e.detail)}</span>` : ''}
+          ${swapped ? `<span class="detail">Your plan: ${esc(findEx(planId)?.name || '')} · <button class="linkbtn" data-act="swap-reset" data-cat="${c.key}">Switch back</button></span>` : ''}</div>
+        ${swapUI}
+        <div class="sets${lr ? ' lr' : ''}">
+          <div class="sethead"><span>Set</span><span>Weight (${unit})</span>${lr ? '<span>Left reps</span><span>Right reps</span>' : '<span>Reps</span>'}</div>
+          ${sets.map((x, i) => `<div class="set"><span class="setn">${i + 1}</span>
+            ${inp(i, 'w', x.w, 'decimal', 'weight', phW)}
+            ${lr ? inp(i, 'rl', x.rl, 'numeric', 'left reps', ph(best?.rl)) + inp(i, 'rr', x.rr, 'numeric', 'right reps', ph(best?.rr)) : inp(i, 'r', x.r, 'numeric', 'reps', ph(best?.r))}</div>`).join('')}
         </div>
-        <div class="btnrow"><button class="btn sm ghost" data-act="add-set" data-cat="${c.key}">+ Add set</button>${sets.length > 1 ? `<button class="btn sm ghost" data-act="rm-set" data-cat="${c.key}">Remove last set</button>` : ''}</div>
-        ${prev ? `<p class="hint num">Week ${prev.week}: ${prev.sets.map((s) => `${s.w || '–'} × ${s.r || '–'}`).join(' · ')}${deload ? ` · Deload target about ${prev.sets.map((s) => num(s.w) ? Math.round(num(s.w) * 0.6) : '–').join(' / ')} ${unit}` : ''}</p>` : (deload ? `<p class="hint">Deload: use about 60% of your usual weight.</p>` : '')}
+        <div class="btnrow"><button class="btn sm ghost" data-act="add-set" data-cat="${c.key}">+ Add set</button>${sets.length > 1 ? `<button class="btn sm ghost" data-act="rm-set" data-cat="${c.key}">Remove last set</button>` : ''}${ui.swapOpen === c.key ? '' : `<button class="btn sm ghost" data-act="swap-open" data-cat="${c.key}">Swap for today</button>`}</div>
+        ${best ? `<p class="hint num">Last time (week ${best.week}) best: <em>${best.w || '–'} ${unit} × ${lr ? `L ${best.rl || '–'} / R ${best.rr || '–'}` : best.r || '–'}</em>${deload ? ` · Deload: about <em>${Math.round(best.w * 0.6)} ${unit}</em>` : ''}</p>` : (deload ? `<p class="hint">Deload: use about 60% of your usual weight.</p>` : (w === 1 ? '<p class="hint">Week 1: log your starting weight and reps. Next week they show here as a guide.</p>' : ''))}
       </section>`;
     }).join('');
 
@@ -588,8 +641,8 @@
     ui.msg = '';
     switch (act) {
       case 'nav': ui.view = t.dataset.view; ui.confirmReset = false; ui.editPlan = false; top(); break;
-      case 'week': ui.week = +t.dataset.w; ui.day = null; break;
-      case 'day': ui.day = +t.dataset.d; break;
+      case 'week': ui.week = +t.dataset.w; ui.day = null; ui.swapOpen = null; break;
+      case 'day': ui.day = +t.dataset.d; ui.swapOpen = null; break;
       case 'unit': setUnit(ui.draft, t.dataset.k, t.dataset.v); break;
       case 'next': {
         const err = validate(FLOWS[ui.flow].steps[ui.step], ui.draft);
@@ -608,6 +661,9 @@
       case 'edit-profile': startFlow('edit'); break;
       case 'plan-edit': ui.editPlan = true; break;
       case 'plan-done': ui.editPlan = false; break;
+      case 'swap-open': ui.swapOpen = t.dataset.cat; break;
+      case 'swap-close': ui.swapOpen = null; break;
+      case 'swap-reset': { const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d); log.ex[t.dataset.cat] = planOf(curBlock())[t.dataset.cat]; ui.swapOpen = null; save(); break; }
       case 'add-set':
       case 'rm-set': {
         const { n, w, d } = ui.ctx; const c = t.dataset.cat;
@@ -694,6 +750,10 @@
   app.addEventListener('change', (e) => {
     const t = e.target;
     if (t.dataset.draftRadio && ui.draft) { ui.draft[t.dataset.draftRadio] = t.value; updatePreview(); return; }
+    if (t.dataset.swap && ui.ctx) {
+      const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d);
+      log.ex[t.dataset.swap] = t.value; save(); render(); return;
+    }
     if (t.hasAttribute('data-plan')) {
       if (t.dataset.src === 'draft') ui.draft.plan[t.dataset.cat] = t.value;
       else { const b = curBlock(); b.plan = planOf(b); b.plan[t.dataset.cat] = t.value; }
@@ -741,7 +801,7 @@
     const blockOf = (n) => state.blocks.find((b) => b.n === n);
     const weekStart = (n, w) => { const b = blockOf(n); return b ? addDays(b.startDate, (w - 1) * 7) : ''; };
 
-    const sets = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Completed on', 'Movement', 'Exercise', 'Set', `Weight (${wu})`, 'Reps']];
+    const sets = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Completed on', 'Movement', 'Exercise', 'Set', `Weight (${wu})`, 'Reps', 'Left reps', 'Right reps', 'Swapped (plan exercise)']];
     const days = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Day complete', 'Completed on', 'Cardio warm-up', 'Dynamic warm-up', 'Cardio', 'Cardio exercise', 'Cardio minutes', 'Notes']];
     for (const [n, w, d] of keys) {
       const l = state.logs[logKey(n, w, d)], b = blockOf(n);
@@ -751,7 +811,8 @@
         const arr = l.sets && l.sets[c.key];
         if (!arr) continue;
         const exId = (l.ex && l.ex[c.key]) || plan[c.key];
-        arr.forEach((st, i) => { if (st.w || st.r) sets.push([n, w, d, yn(isDeload(w)), weekStart(n, w), l.doneDate || '', c.label, findEx(exId)?.name || exId || '', i + 1, v(st.w), v(st.r)]); });
+        const swappedFrom = exId !== plan[c.key] ? (findEx(plan[c.key])?.name || '') : '';
+        arr.forEach((st, i) => { if (st.w || st.r || st.rl || st.rr) sets.push([n, w, d, yn(isDeload(w)), weekStart(n, w), l.doneDate || '', c.label, findEx(exId)?.name || exId || '', i + 1, v(st.w), c.key === 'single' ? '' : v(st.r), v(st.rl || ''), v(st.rr || ''), swappedFrom]); });
       }
       const cardioId = (l.ex && l.ex.cardio) || plan.cardio;
       days.push([n, w, d, yn(isDeload(w)), weekStart(n, w), yn(l.done), l.doneDate || '', yn(l.warmup), yn(l.dynamic), yn(l.cardio), findEx(cardioId)?.name || '', v(l.cardioMin), l.notes || '']);
@@ -779,7 +840,7 @@
     const plans = [['Block', 'Started', ...CATS.map((c) => c.label)], ...state.blocks.map((b) => [b.n, b.startDate, ...CATS.map((c) => findEx(planOf(b)[c.key])?.name || '')])];
 
     return window.makeXlsx([
-      { name: 'Workout Sets', rows: sets, widths: [7, 6, 5, 11, 13, 13, 11, 26, 5, 12, 6] },
+      { name: 'Workout Sets', rows: sets, widths: [7, 6, 5, 11, 13, 13, 11, 26, 5, 12, 6, 10, 11, 22] },
       { name: 'Lift Days', rows: days, widths: [7, 6, 5, 11, 13, 12, 13, 14, 15, 7, 22, 14, 40] },
       { name: 'Bonus & Steps', rows: daily, widths: [12, 18, 13, 9, 15, 9, 30] },
       { name: 'Measurements', rows: meas, widths: [7, 13, 9, 11, 12, 9, 9, 9, 10, 9, 16, 13] },

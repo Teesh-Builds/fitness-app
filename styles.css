@@ -313,3 +313,12 @@ th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .dcal { font-size: 0.9rem; }
 .dcal b { font-family: var(--f-display); font-size: 1.1rem; }
 .field .seg { justify-self: start; }
+
+/* last-week hints, left/right, swap */
+.set input::placeholder { font-style: italic; color: var(--muted); opacity: 0.6; }
+.hint em { font-style: italic; }
+.sets.lr .sethead, .sets.lr .set { grid-template-columns: 34px 1.2fr 1fr 1fr; }
+.swaptag { background: var(--deload-bg); color: var(--deload); border: 1px solid var(--deload); border-radius: 99px; padding: 1px 8px; font-size: 0.65rem; margin-left: 6px; letter-spacing: 0.04em; }
+.swapbox { background: var(--surface-2); border: 1px dashed var(--deload); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+.swapbox p { font-size: 0.88rem; }
+.linkbtn { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: var(--link); text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; cursor: pointer; }
