@@ -65,7 +65,9 @@ window.EXERCISE_LIBRARY = {
       options: [
         { id: "lat-pulldown", name: "Lat Pulldowns", video: "" },
         { id: "pull-up", name: "Pull Ups", video: "" },
-        { id: "one-arm-db-row", name: "One Arm Dumbbell Rows", video: "" }
+        { id: "one-arm-db-row", name: "One Arm Dumbbell Rows", video: "" },
+        { id: "face-pull", name: "Face Pulls", video: "" },
+        { id: "cable-row", name: "Cable Rows", video: "" }
       ]
     },
     {
@@ -73,7 +75,9 @@ window.EXERCISE_LIBRARY = {
       label: "Single Leg",
       options: [
         { id: "step-up", name: "Step Ups", video: "" },
-        { id: "reverse-lunge", name: "Reverse Lunge", video: "" }
+        { id: "reverse-lunge", name: "Reverse Lunge", video: "" },
+        { id: "single-leg-press-sl", name: "Single Leg Press", video: "" },
+        { id: "romanian-split-squat", name: "Romanian Split Squat", video: "" }
       ]
     },
     {
@@ -82,7 +86,9 @@ window.EXERCISE_LIBRARY = {
       options: [
         { id: "dead-bug", name: "Dead Bug", video: "" },
         { id: "farmers-carry", name: "Farmers Carry", video: "" },
-        { id: "weighted-crunch", name: "Weighted Crunches", video: "" }
+        { id: "weighted-crunch", name: "Weighted Crunches", video: "" },
+        { id: "suitcase-carry", name: "Suitcase Carry", video: "" },
+        { id: "db-around-the-body", name: "Standing Dumbbell Around-the-Body Pass (Core & Grip)", video: "" }
       ]
     },
     {
