@@ -341,4 +341,5 @@ th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .sbody small { color: var(--muted); }
 .sname { appearance: none; border: 0; background: none; padding: 0; color: var(--ink); font: 700 0.98rem var(--f-body); text-align: left; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; justify-self: start; }
 .sicon { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: 2px 8px; }
-.simg { display: block; width: 100%; max-width: 300px; height: auto; margin-left: 34px; border-radius: 12px; border: 1px solid var(--line); background: #f2f2f2; }
+.simg { display: block; width: calc(100% - 34px); max-width: 240px; height: auto; margin-left: 34px; border-radius: 12px; border: 1px solid var(--line); background: #f2f2f2; }
+.stretch { min-width: 0; overflow: hidden; }
