@@ -202,23 +202,26 @@
   // Best set from the most recent earlier week (skipping deload weeks) for this exercise, across all 3 days:
   // highest weight, then highest reps at that weight.
   const LR = (cat) => cat === 'single';
-  function lastBest(n, w, cat, exId) {
-    for (let ww = w - 1; ww >= 1; ww--) {
+  // Best set from the most recent earlier session of this exercise (previous day, or earlier), skipping deload weeks:
+  // highest weight, then highest reps at that weight.
+  function lastBest(n, w, d, cat, exId) {
+    const blk = state.blocks.find((x) => x.n === n) || curBlock();
+    for (let ww = w; ww >= 1; ww--) {
       if (isDeload(ww)) continue;
-      let best = null;
-      for (let d = 1; d <= 3; d++) {
-        const l = getLog(n, ww, d);
-        if (!l || !l.sets || !l.sets[cat] || (l.ex[cat] || planOf(curBlock())[cat]) !== exId) continue;
+      for (let dd = ww === w ? d - 1 : 3; dd >= 1; dd--) {
+        const l = getLog(n, ww, dd);
+        if (!l || !l.sets || !l.sets[cat] || ((l.ex && l.ex[cat]) || planAt(blk, cat, ww, dd)) !== exId) continue;
+        let best = null;
         for (const x of l.sets[cat]) {
           const wt = num(x.w) ?? 0;
           const reps = LR(cat) ? Math.max(num(x.rl) ?? 0, num(x.rr) ?? 0) : (num(x.r) ?? 0);
           if (!wt && !reps) continue;
-          const cand = { week: ww, w: wt, r: reps, rl: num(x.rl) ?? 0, rr: num(x.rr) ?? 0 };
+          const cand = { week: ww, day: dd, w: wt, r: reps, rl: num(x.rl) ?? 0, rr: num(x.rr) ?? 0 };
           if (!best || cand.w > best.w || (cand.w === best.w && cand.r > best.r)) best = cand;
           else if (LR(cat) && cand.w === best.w) { best.rl = Math.max(best.rl, cand.rl); best.rr = Math.max(best.rr, cand.rr); }
         }
+        if (best) return best;
       }
-      if (best) return best;
     }
     return null;
   }
@@ -492,7 +495,7 @@
       const swapped = exId !== planId;
       const lr = LR(c.key);
       const sets = log?.sets?.[c.key] || blankSets();
-      const best = lastBest(b.n, w, c.key, exId);
+      const best = lastBest(b.n, w, d, c.key, exId);
       const e = findEx(exId);
       const dl = (x) => (deload && x ? String(Math.round(x * 0.6)) : x ? String(x) : '');
       const phW = best ? dl(best.w) : '';
@@ -517,7 +520,7 @@
             ${lr ? inp(i, 'rl', x.rl, 'numeric', 'left reps', ph(best?.rl)) + inp(i, 'rr', x.rr, 'numeric', 'right reps', ph(best?.rr)) : inp(i, 'r', x.r, 'numeric', 'reps', ph(best?.r))}</div>`).join('')}
         </div>
         <div class="btnrow"><button class="btn sm ghost" data-act="add-set" data-cat="${c.key}">+ Add set</button>${sets.length > 1 ? `<button class="btn sm ghost" data-act="rm-set" data-cat="${c.key}">Remove last set</button>` : ''}${ui.swapOpen === c.key ? '' : `<button class="btn sm ghost" data-act="swap-open" data-cat="${c.key}">Swap for today</button>`}</div>
-        ${best ? `<p class="hint num">Last time (week ${best.week}) best: <em>${best.w || '–'} ${unit} × ${lr ? `L ${best.rl || '–'} / R ${best.rr || '–'}` : best.r || '–'}</em>${deload ? ` · Deload: about <em>${Math.round(best.w * 0.6)} ${unit}</em>` : ''}</p>` : (deload ? `<p class="hint">Deload: use about 60% of your usual weight.</p>` : (w === 1 ? '<p class="hint">Week 1: log your starting weight and reps. Next week they show here as a guide.</p>' : ''))}
+        ${best ? `<p class="hint num">Last time (week ${best.week}, day ${best.day}) best: <em>${best.w || '–'} ${unit} × ${lr ? `L ${best.rl || '–'} / R ${best.rr || '–'}` : best.r || '–'}</em>${deload ? ` · Deload: about <em>${Math.round(best.w * 0.6)} ${unit}</em>` : ''}</p>` : (deload ? `<p class="hint">Deload: use about 60% of your usual weight.</p>` : (w === 1 && d === 1 ? '<p class="hint">Log your starting weight and reps. From your next workout they show here in grey as a reminder.</p>' : ''))}
       </section>`;
     }).join('');
 
