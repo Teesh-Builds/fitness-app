@@ -516,8 +516,8 @@
         <div class="sets${lr ? ' lr' : ''}">
           <div class="sethead"><span>Set</span><span>Weight (${unit})</span>${lr ? '<span>Left reps</span><span>Right reps</span>' : '<span>Reps</span>'}</div>
           ${sets.map((x, i) => `<div class="set"><span class="setn">${i + 1}</span>
-            ${inp(i, 'w', x.w, 'decimal', 'weight', phW)}
-            ${lr ? inp(i, 'rl', x.rl, 'numeric', 'left reps', ph(best?.rl)) + inp(i, 'rr', x.rr, 'numeric', 'right reps', ph(best?.rr)) : inp(i, 'r', x.r, 'numeric', 'reps', ph(best?.r))}</div>`).join('')}
+            ${inp(i, 'w', x.w, 'decimal', 'weight', i === 0 ? phW : '')}
+            ${lr ? inp(i, 'rl', x.rl, 'numeric', 'left reps', i === 0 ? ph(best?.rl) : '') + inp(i, 'rr', x.rr, 'numeric', 'right reps', i === 0 ? ph(best?.rr) : '') : inp(i, 'r', x.r, 'numeric', 'reps', i === 0 ? ph(best?.r) : '')}</div>`).join('')}
         </div>
         <div class="btnrow"><button class="btn sm ghost" data-act="add-set" data-cat="${c.key}">+ Add set</button>${sets.length > 1 ? `<button class="btn sm ghost" data-act="rm-set" data-cat="${c.key}">Remove last set</button>` : ''}${ui.swapOpen === c.key ? '' : `<button class="btn sm ghost" data-act="swap-open" data-cat="${c.key}">Swap for today</button>`}</div>
         ${best ? `<p class="hint num">Last time (week ${best.week}, day ${best.day}) best: <em>${best.w || '–'} ${unit} × ${lr ? `L ${best.rl || '–'} / R ${best.rr || '–'}` : best.r || '–'}</em>${deload ? ` · Deload: about <em>${Math.round(best.w * 0.6)} ${unit}</em>` : ''}</p>` : (deload ? `<p class="hint">Deload: use about 60% of your usual weight.</p>` : (w === 1 && d === 1 ? '<p class="hint">Log your starting weight and reps. From your next workout they show here in grey as a reminder.</p>' : ''))}
