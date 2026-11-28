@@ -343,3 +343,33 @@ th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .sicon { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: 2px 8px; }
 .simg { display: block; width: calc(100% - 34px); max-width: 240px; height: auto; margin-left: 34px; border-radius: 12px; border: 1px solid var(--line); background: #f2f2f2; }
 .stretch { min-width: 0; overflow: hidden; }
+
+/* add your own exercise */
+.addown { font-size: 0.82rem; justify-self: start; color: var(--muted); }
+.addcustom { display: grid; gap: 6px; margin-top: 4px; }
+
+/* completion check + toast */
+.card.missing { border: 2px solid var(--deload); background: var(--deload-bg); }
+.card.missing h3 { color: var(--deload); }
+.card.missing ul { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: 0.92rem; }
+.toast { background: var(--bar); color: var(--bar-ink); border-left: 5px solid var(--accent); border-radius: 12px; padding: 12px 14px; font-weight: 700; }
+
+/* rest timer */
+#rest { position: fixed; z-index: 6; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+.rest-fab button { appearance: none; border: 2px solid var(--bar); background: var(--accent); color: var(--accent-ink); font: 800 0.95rem var(--f-body); border-radius: 99px; padding: 10px 16px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.25); cursor: pointer; min-width: 84px; }
+.rest-fab.running button { background: var(--bar); color: var(--accent); border-color: var(--accent); }
+.rest-fab b { font-size: 1.1rem; }
+#rest.rest-panel { left: max(16px, env(safe-area-inset-left, 0px)); }
+.rest-in { max-width: 528px; margin: 0 auto; background: var(--bar); color: var(--bar-ink); border-top: 4px solid var(--accent); border-radius: 16px; padding: 12px 16px 14px; display: grid; gap: 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.3); }
+.rest-in .eyebrow { color: var(--accent); }
+.rest-in .linkbtn { color: var(--bar-ink); }
+.rest-top { display: flex; justify-content: space-between; align-items: center; }
+.rest-time { font-family: var(--f-display); font-stretch: 80%; font-weight: 800; font-size: 3rem; line-height: 1; text-align: center; }
+.rest-panel.done .rest-time { color: var(--accent); }
+.rest-msg { text-align: center; font-weight: 700; }
+.rest-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.rest-presets button { appearance: none; border: 1px solid #444; background: #222; color: #f2f2f2; border-radius: 10px; padding: 8px 0; font: 700 0.95rem var(--f-body); font-variant-numeric: tabular-nums; cursor: pointer; }
+.rest-presets button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.rest-in .btnrow { justify-content: center; }
+.rest-in .btn.ghost { color: var(--bar-ink); border-color: #555; }
+main.page { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }

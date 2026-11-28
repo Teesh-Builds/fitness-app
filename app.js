@@ -54,8 +54,11 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const isDeload = (w) => DELOAD.includes(w);
 
+  // Exercises people add themselves are saved on the device, per movement.
+  const customStore = () => (state ? (state.custom = state.custom || {}) : (ui.pendingCustom = ui.pendingCustom || {}));
+  const optionsFor = (c) => [...c.options, ...((customStore()[c.key]) || [])];
   function findEx(id) {
-    for (const c of CATS) { const e = c.options.find((o) => o.id === id); if (e) return e; }
+    for (const c of CATS) { const e = optionsFor(c).find((o) => o.id === id); if (e) return e; }
     return null;
   }
   function videoUrl(e) {
@@ -267,7 +270,8 @@
   function finishFlow() {
     const d = ui.draft;
     if (ui.flow === 'onboard') {
-      state = { version: DATA_VERSION, created: todayISO(), profile: profileFrom(d), blocks: [{ n: 1, startDate: d.startDate, plan: clone(d.plan), startStats: statsFrom(d) }], logs: {} };
+      state = { version: DATA_VERSION, created: todayISO(), profile: profileFrom(d), blocks: [{ n: 1, startDate: d.startDate, plan: clone(d.plan), startStats: statsFrom(d) }], logs: {}, custom: ui.pendingCustom || {} };
+      ui.pendingCustom = null;
     } else if (ui.flow === 'edit') {
       state.profile = profileFrom(d);
     } else if (ui.flow === 'checkin') {
@@ -349,6 +353,12 @@
   }
 
   /* ---------- plan builder ---------- */
+  function customAdder(c, src) {
+    const key = `${src}-${c.key}`;
+    if (ui.addCustom !== key) return `<button class="linkbtn addown" data-act="custom-open" data-key="${key}">+ Add your own ${esc(c.label)} exercise</button>`;
+    return `<div class="addcustom"><input type="text" id="cx-${key}" placeholder="Exercise name, e.g. Hack Squat" maxlength="60" autocomplete="off" aria-label="Your own ${esc(c.label)} exercise">
+      <div class="btnrow"><button class="btn sm primary" data-act="custom-add" data-key="${key}" data-cat="${c.key}" data-src="${src}">Add</button><button class="btn sm ghost" data-act="custom-cancel">Cancel</button></div></div>`;
+  }
   function planBuilder(plan, src) {
     return `<section class="card">
       <div class="prow"><span class="cat">Warm up</span><span class="warmline">Cardio 5–10 min, then 5 dynamic stretches</span></div>
@@ -357,9 +367,10 @@
         return `<div class="prow"><label class="cat" for="p-${src}-${c.key}">${esc(c.label)}</label><div class="pick">
           <select id="p-${src}-${c.key}" data-plan data-cat="${c.key}" data-src="${src}">
             ${e ? '' : '<option value="" selected>Choose…</option>'}
-            ${c.options.map((o) => `<option value="${esc(o.id)}"${o.id === plan[c.key] ? ' selected' : ''}>${esc(o.name)}${o.detail ? ' (' + esc(o.detail) + ')' : ''}</option>`).join('')}
+            ${optionsFor(c).map((o) => `<option value="${esc(o.id)}"${o.id === plan[c.key] ? ' selected' : ''}>${esc(o.name)}${o.detail ? ' (' + esc(o.detail) + ')' : ''}${o.custom ? ' (your own)' : ''}</option>`).join('')}
           </select>
           ${e ? `<a href="${esc(videoUrl(e))}" target="_blank" rel="noopener">▶ How to do ${esc(e.name)}</a>` : ''}
+          ${customAdder(c, src)}
         </div></div>`;
       }).join('')}
     </section>`;
@@ -451,7 +462,7 @@
     const w = Math.min(weekNow(b), WEEKS);
     const views = { today: viewToday, plan: viewPlan, me: viewMe, cal: viewCal };
     return `<header class="topbar"><span class="brand">Lift<b>Block</b></span><span class="topright"><span class="where num">Block ${b.n} · Week ${needsCheckin() ? WEEKS + 1 : w}${isDeload(w) && !needsCheckin() ? ' · Deload' : ''}</span><button class="calbtn" data-act="nav" data-view="cal" aria-label="Calendar"${ui.view === 'cal' ? ' aria-current="page"' : ''}>${ICONS.cal}</button></span></header>
-      <main class="page">${views[ui.view]()}</main>
+      <main class="page">${ui.toast ? `<div class="toast" role="status">${esc(ui.toast)}</div>` : ''}${views[ui.view]()}</main>
       <nav class="tabs" aria-label="Main"><div class="tabs-in">
         ${[['today', 'Workout'], ['plan', 'Plan'], ['me', 'Progress']].map(([v, l]) => `<button data-act="nav" data-view="${v}"${ui.view === v ? ' aria-current="page"' : ''}>${ICONS[v]}${l}</button>`).join('')}
       </div></nav>`;
@@ -503,7 +514,7 @@
       const inp = (i, f, val, mode, label, placeholder) => `<input type="text" inputmode="${mode}" data-set="${c.key}" data-i="${i}" data-f="${f}" value="${esc(val || '')}" placeholder="${esc(placeholder)}" aria-label="${esc(c.label)} set ${i + 1} ${label}" autocomplete="off">`;
       const swapUI = ui.swapOpen === c.key
         ? `<div class="swapbox"><p><strong>We recommend keeping the same exercise.</strong> Sticking with it for all 12 weeks is how you see your progress. Only swap for an injury or if the equipment isn't free.</p>
-            <label class="field" for="sw-${c.key}">Swap to<select id="sw-${c.key}" data-swap="${c.key}">${c.options.map((o) => `<option value="${esc(o.id)}"${o.id === exId ? ' selected' : ''}>${esc(o.name)}${o.id === planId ? ' (your plan)' : ''}</option>`).join('')}</select></label>
+            <label class="field" for="sw-${c.key}">Swap to<select id="sw-${c.key}" data-swap="${c.key}">${optionsFor(c).map((o) => `<option value="${esc(o.id)}"${o.id === exId ? ' selected' : ''}>${esc(o.name)}${o.id === planId ? ' (your plan)' : ''}</option>`).join('')}</select></label>
             ${swapped
               ? `<p class="hint">Now swapped for today only. Want ${esc(findEx(exId)?.name || '')} for every remaining ${esc(c.label)} workout in Block ${b.n}?</p>
                  <div class="btnrow"><button class="btn sm" data-act="swap-close">Just today</button><button class="btn sm primary" data-act="swap-block" data-cat="${c.key}">Rest of Block ${b.n}</button></div>`
@@ -542,6 +553,8 @@
         </div>
       </section>
       <section class="card"><label class="field" for="f-notes">Notes<small>How did it feel? Anything you noticed?</small><textarea id="f-notes" data-field="notes" placeholder="e.g. Left knee felt better. Go up 5 lb on squats next week.">${esc(log?.notes || '')}</textarea></label></section>
+      ${ui.missing ? `<section class="card missing" role="alert"><h3>Not quite done yet</h3><p class="muted" style="font-size:.88rem">These parts of Day ${d} aren't filled in:</p><ul>${ui.missing.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
+        <div class="btnrow"><button class="btn primary" data-act="missing-close">Go back and finish</button><button class="btn ghost" data-act="complete-anyway">Mark complete anyway</button></div></section>` : ''}
       <button class="btn block ${log?.done ? 'done' : 'primary'}" data-act="toggle-done">${log?.done ? `✓ Day ${d} complete` : `Mark Day ${d} complete`}</button>
       ${w === WEEKS && !needsCheckin() ? `<section class="card flat"><h3>Last week of Block ${b.n}</h3><p class="muted" style="font-size:.88rem">When you've finished this week's workouts, finish the block to check in and pick your next exercises.</p><div><button class="btn" data-act="checkin-start">Finish Block ${b.n}</button></div></section>` : ''}`;
   }
@@ -636,12 +649,78 @@
   }
 
   function render() {
-    if (ui.showWelcome) { app.innerHTML = renderWelcome(); return; }
-    if (!state && !ui.welcomed) { app.innerHTML = renderWelcome(); return; }
+    if (ui.showWelcome) { app.innerHTML = renderWelcome(); drawTimer(); return; }
+    if (!state && !ui.welcomed) { app.innerHTML = renderWelcome(); drawTimer(); return; }
     if (!state && ui.flow !== 'onboard') startFlow('onboard');
     else if (state && !ui.flow && needsCheckin() && !ui.checkinLater) startFlow('checkin');
     app.innerHTML = ui.flow ? renderFlow() : renderShell();
+    drawTimer();
+    if (ui.toast) { clearTimeout(ui.toastT); ui.toastT = setTimeout(() => { ui.toast = null; document.querySelector('.toast')?.remove(); }, 3500); }
   }
+
+  /* ---------- rest timer ---------- */
+  // Lives outside #app so re-rendering the page never resets it. Counts down from a timestamp,
+  // so it stays right even if the phone sleeps; beeps and vibrates when time is up.
+  const timerEl = document.createElement('div');
+  timerEl.id = 'rest';
+  document.body.appendChild(timerEl);
+  const T = { end: 0, dur: 90, open: false, done: false, tick: null, ctx: null };
+  const fmtT = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  const left = () => Math.max(0, Math.ceil((T.end - Date.now()) / 1000));
+  function chime() {
+    try {
+      const ctx = T.ctx; if (!ctx) throw 0;
+      [0, 0.3, 0.6].forEach((o) => {
+        const os = ctx.createOscillator(), g = ctx.createGain();
+        os.frequency.value = 880; os.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.3, ctx.currentTime + o); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + o + 0.25);
+        os.start(ctx.currentTime + o); os.stop(ctx.currentTime + o + 0.25);
+      });
+    } catch (e) { /* no sound available */ }
+    try { navigator.vibrate && navigator.vibrate([250, 120, 250, 120, 250]); } catch (e) { /* ignore */ }
+  }
+  function startTimer(sec) {
+    try { T.ctx = T.ctx || new (window.AudioContext || window.webkitAudioContext)(); T.ctx.resume && T.ctx.resume(); } catch (e) { /* ignore */ }
+    T.dur = sec; T.end = Date.now() + sec * 1000; T.done = false;
+    if (state) { state.restDur = sec; save(); }
+    clearInterval(T.tick);
+    T.tick = setInterval(() => {
+      if (T.end && left() === 0) { T.end = 0; T.done = true; T.open = true; clearInterval(T.tick); chime(); }
+      drawTimer();
+    }, 250);
+    drawTimer();
+  }
+  function drawTimer() {
+    const show = state && !ui.flow && !ui.showWelcome && ui.view === 'today';
+    timerEl.hidden = !show;
+    if (!show) return;
+    const running = T.end > 0;
+    if (!T.open) {
+      timerEl.className = 'rest-fab' + (running ? ' running' : '');
+      timerEl.innerHTML = `<button data-timer="open" aria-label="Rest timer">${running ? `<b class="num">${fmtT(left())}</b>` : '<span aria-hidden="true">⏱</span> Rest'}</button>`;
+      return;
+    }
+    const def = (state && state.restDur) || 90;
+    timerEl.className = 'rest-panel' + (T.done ? ' done' : '');
+    timerEl.innerHTML = `<div class="rest-in">
+      <div class="rest-top"><span class="eyebrow">Rest timer</span><button class="linkbtn" data-timer="close">Hide</button></div>
+      <div class="rest-time num" aria-live="polite">${T.done ? 'Rest done!' : fmtT(running ? left() : def)}</div>
+      ${T.done ? '<p class="rest-msg">Time for your next set 💪🏽</p>' : ''}
+      <div class="rest-presets">${[60, 90, 120, 180].map((x) => `<button data-timer="go" data-sec="${x}" aria-pressed="${!running && !T.done && x === def}">${fmtT(x)}</button>`).join('')}</div>
+      <div class="btnrow">${running ? '<button class="btn sm" data-timer="plus">+15 sec</button><button class="btn sm ghost" data-timer="stop">Stop</button>' : `<button class="btn sm primary" data-timer="go" data-sec="${def}">Start ${fmtT(def)}</button>`}</div>
+    </div>`;
+  }
+  timerEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-timer]'); if (!b) return;
+    const a = b.dataset.timer;
+    if (a === 'open') T.open = true;
+    if (a === 'close') { T.open = false; T.done = false; }
+    if (a === 'go') startTimer(+b.dataset.sec);
+    if (a === 'plus') T.end += 15000;
+    if (a === 'stop') { T.end = 0; clearInterval(T.tick); }
+    drawTimer();
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') drawTimer(); });
 
   /* ---------- events ---------- */
   function updatePreview() {
@@ -657,8 +736,8 @@
     ui.msg = '';
     switch (act) {
       case 'nav': ui.view = t.dataset.view; ui.confirmReset = false; ui.editPlan = false; top(); break;
-      case 'week': ui.week = +t.dataset.w; ui.day = null; ui.swapOpen = null; break;
-      case 'day': ui.day = +t.dataset.d; ui.swapOpen = null; break;
+      case 'week': ui.week = +t.dataset.w; ui.day = null; ui.swapOpen = null; ui.missing = null; break;
+      case 'day': ui.day = +t.dataset.d; ui.swapOpen = null; ui.missing = null; break;
       case 'unit': setUnit(ui.draft, t.dataset.k, t.dataset.v); break;
       case 'next': {
         const err = validate(FLOWS[ui.flow].steps[ui.step], ui.draft);
@@ -701,11 +780,25 @@
       }
       case 'toggle-done': {
         const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d);
-        log.done = !log.done; ui.day = d;
-        if (log.done) log.doneDate = todayISO(); else delete log.doneDate;
-        if (log.done && w === WEEKS && daysDone(n, WEEKS) === 3) window.scrollTo(0, 0);
-        snapshotEx(log, d);
-        save(); break;
+        if (log.done) { log.done = false; delete log.doneDate; ui.day = d; ui.missing = null; save(); break; }
+        const miss = missingItems(log, d);
+        if (miss.length) { ui.missing = miss; ui.day = d; break; }
+        completeDay(n, w, d); break;
+      }
+      case 'complete-anyway': { const { n, w, d } = ui.ctx; completeDay(n, w, d); break; }
+      case 'missing-close': ui.missing = null; break;
+      case 'custom-open': ui.addCustom = t.dataset.key; break;
+      case 'custom-cancel': ui.addCustom = null; break;
+      case 'custom-add': {
+        const inp = document.getElementById('cx-' + t.dataset.key);
+        const name = (inp && inp.value || '').trim();
+        if (!name) { inp && inp.focus(); return; }
+        const c = t.dataset.cat, store = customStore();
+        const ex = { id: 'custom-' + Date.now().toString(36), name, custom: true, video: '' };
+        (store[c] = store[c] || []).push(ex);
+        if (t.dataset.src === 'draft') ui.draft.plan[c] = ex.id;
+        else { const blk = curBlock(); blk.plan = planOf(blk); blk.plan[c] = ex.id; }
+        ui.addCustom = null; save(); break;
       }
       case 'cal-month': {
         const [y, m] = (ui.calMonth || todayISO().slice(0, 7)).split('-').map(Number);
@@ -742,6 +835,31 @@
     render();
   });
 
+  // What's still unticked or empty for a day. Notes are optional; weight can be blank for bodyweight moves.
+  function missingItems(log, d) {
+    const miss = [];
+    if (!log.warmup) miss.push('Cardio warm-up');
+    const st = STRETCHES.filter((x) => !(log.stretch && log.stretch[x.id]));
+    if (st.length) miss.push(st.length === STRETCHES.length ? 'Dynamic stretches' : `Dynamic stretches: ${st.map((x) => x.name).join(', ')}`);
+    for (const c of CATS) {
+      if (c.type === 'cardio') continue;
+      const sets = (log.sets && log.sets[c.key]) || blankSets();
+      const lr = LR(c.key);
+      const empty = sets.filter((x) => (lr ? !(x.rl && x.rr) : !x.r)).length;
+      if (empty) miss.push(`${c.label}: reps missing in ${empty} set${empty > 1 ? 's' : ''}`);
+    }
+    if (!log.cardio) miss.push('Cardio');
+    return miss;
+  }
+  function completeDay(n, w, d) {
+    const log = ensureLog(n, w, d);
+    log.done = true; log.doneDate = todayISO(); snapshotEx(log, d);
+    ui.missing = null; save();
+    if (w === WEEKS && daysDone(n, WEEKS) === 3) { ui.day = d; ui.toast = `Day ${d} complete!`; }
+    else if (d < 3) { ui.week = w; ui.day = d + 1; ui.toast = `Day ${d} complete! Here's Day ${d + 1}.`; }
+    else if (w < WEEKS) { ui.week = w + 1; ui.day = 1; ui.toast = `Week ${w} done! Here's Week ${w + 1}, Day 1.`; }
+    window.scrollTo(0, 0);
+  }
   function snapshotEx(log, d) {
     const plan = planOf(curBlock());
     for (const c of CATS) if (!log.ex[c.key]) log.ex[c.key] = plan[c.key];
