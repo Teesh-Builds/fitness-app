@@ -13,9 +13,17 @@
   const LB_PER_KG = 2.20462;
   const MEAS = [['waist', 'Waist'], ['hips', 'Hips'], ['chest', 'Chest'], ['arm', 'Upper arm'], ['thigh', 'Thigh']];
   const FLOWS = {
-    onboard: { title: 'Set up', steps: ['units', 'body', 'targets', 'plan'], finish: 'Start my plan' },
+    onboard: { title: 'Set up', steps: ['units', 'body', 'targets', 'mode', 'plan'], finish: 'Start my plan' },
     edit: { title: 'Edit profile', steps: ['units', 'body', 'targets'], finish: 'Save' },
-    checkin: { title: 'Finish block & check in', steps: ['body', 'targets', 'plan'], finish: 'Start next 12 weeks' },
+    checkin: { title: 'Finish block & check in', steps: ['body', 'targets', 'mode', 'plan'], finish: 'Start next 12 weeks' },
+  };
+  const PHASE_WEEK = Math.floor(WEEKS / 2) + 1; // week 7 in a 12-week block
+  // Block styles: how exercises are chosen across the 12 weeks.
+  const MODES = {
+    lock: { icon: '🔒', name: 'Lock In', tag: 'Same moves for all 12 weeks', desc: 'Pick 6 moves once and do them every workout. The clearest way to watch your numbers climb.', rec: true },
+    ab: { icon: '🔀', name: 'A/B Split', tag: 'Two plans, alternating days', desc: `Plan A on Days 1 and 3, Plan B on Day 2. Twice the variety, and you still repeat each plan every week.` },
+    phase: { icon: '🔁', name: 'Phase Shift', tag: `New moves at week ${PHASE_WEEK}`, desc: `Weeks 1 to ${PHASE_WEEK - 1} use one set of moves. At week ${PHASE_WEEK} you pick fresh ones for the second half.` },
+    free: { icon: '🎲', name: 'Freestyle', tag: 'Pick as you go', desc: 'Choose your exercise for each movement every workout. Good for busy gyms or if you like to mix it up.' },
   };
 
   const app = document.getElementById('app');
@@ -144,15 +152,30 @@
   /* ---------- drafts & units ---------- */
   // One exercise per movement, used on all 3 days for the whole 12-week block.
   const planOf = (b) => (Array.isArray(b.plan) ? b.plan[0] : b.plan);
+  const modeOf = (b) => (b && MODES[b.mode] ? b.mode : 'lock');
+  // Which of the block's plans (A or B) a given week/day uses.
+  function whichPlan(b, w, d) {
+    const m = modeOf(b);
+    if (m === 'ab') return d === 2 ? 'B' : 'A';
+    if (m === 'phase') return w >= PHASE_WEEK ? 'B' : 'A';
+    return 'A';
+  }
+  const planByKey = (b, k) => (k === 'B' && b.planB ? b.planB : planOf(b));
+  const planFor = (b, w, d) => planByKey(b, whichPlan(b, w, d));
+  function setPlanEx(b, k, cat, id) {
+    if (k === 'B') { b.planB = b.planB || clone(planOf(b)); b.planB[cat] = id; }
+    else { b.plan = planOf(b); b.plan[cat] = id; }
+  }
+  const PLAN_LABEL = { ab: { A: 'Plan A · Days 1 & 3', B: 'Plan B · Day 2' }, phase: { A: `Weeks 1–${PHASE_WEEK - 1}`, B: `Weeks ${PHASE_WEEK}–${WEEKS}` } };
   function defaultPlan(prev) {
     if (prev) return clone(Array.isArray(prev) ? prev[0] : prev);
     return Object.fromEntries(CATS.map((c) => [c.key, c.options[0].id]));
   }
   function newDraft() {
-    return { name: '', weightUnit: 'lb', heightUnit: 'ftin', lengthUnit: 'in', weight: '', goalWeight: '', heightFt: '', heightIn: '', heightCm: '', meas: {}, age: '', sex: '', activity: 'moderate', goal: 'lose', startDate: todayISO(), plan: defaultPlan() };
+    return { name: '', weightUnit: 'lb', heightUnit: 'ftin', lengthUnit: 'in', weight: '', goalWeight: '', heightFt: '', heightIn: '', heightCm: '', meas: {}, age: '', sex: '', activity: 'moderate', goal: 'lose', startDate: todayISO(), mode: 'lock', plan: defaultPlan(), planB: defaultPlan() };
   }
   function profileFrom(d) {
-    const { plan, startDate, prev, ...p } = d;
+    const { plan, planB, mode, startDate, prev, ...p } = d;
     return clone(p);
   }
   function statsFrom(d) {
@@ -230,8 +253,9 @@
   }
   // The plan exercise that applied on a given week/day, allowing for "rest of block" swaps made later.
   function planAt(blk, cat, w, d) {
-    let id = planOf(blk)[cat];
-    const ch = (blk.planChanges || []).filter((x) => x.movement === cat);
+    const k = whichPlan(blk, w, d);
+    let id = planByKey(blk, k)[cat];
+    const ch = (blk.planChanges || []).filter((x) => x.movement === cat && (x.which || 'A') === k);
     for (let i = ch.length - 1; i >= 0; i--) if (ch[i].week * 10 + ch[i].day > w * 10 + d) id = ch[i].from;
     return id;
   }
@@ -248,7 +272,7 @@
     if (flow === 'edit') ui.draft = clone(state.profile);
     if (flow === 'checkin') {
       const p = clone(state.profile);
-      ui.draft = { ...p, prev: { weight: p.weight, meas: clone(p.meas || {}) }, weight: '', meas: {}, startDate: todayISO(), plan: defaultPlan(curBlock().plan) };
+      ui.draft = { ...p, prev: { weight: p.weight, meas: clone(p.meas || {}) }, weight: '', meas: {}, startDate: todayISO(), mode: modeOf(curBlock()), plan: defaultPlan(curBlock().plan), planB: defaultPlan(curBlock().planB || curBlock().plan) };
     }
     window.scrollTo(0, 0);
   }
@@ -267,10 +291,18 @@
     if (step === 'plan' && !d.startDate) return 'Pick a start date.';
     return '';
   }
+  function newBlock(n, d) {
+    const mode = MODES[d.mode] ? d.mode : 'lock';
+    const blk = { n, startDate: d.startDate, mode, plan: clone(d.plan), startStats: statsFrom(d) };
+    // A/B: both plans picked now. Phase Shift: second half starts as a copy, picked at week 7.
+    if (mode === 'ab') blk.planB = clone(d.planB || d.plan);
+    if (mode === 'phase') blk.planB = clone(d.plan);
+    return blk;
+  }
   function finishFlow() {
     const d = ui.draft;
     if (ui.flow === 'onboard') {
-      state = { version: DATA_VERSION, created: todayISO(), profile: profileFrom(d), blocks: [{ n: 1, startDate: d.startDate, plan: clone(d.plan), startStats: statsFrom(d) }], logs: {}, custom: ui.pendingCustom || {} };
+      state = { version: DATA_VERSION, created: todayISO(), profile: profileFrom(d), blocks: [newBlock(1, d)], logs: {}, custom: ui.pendingCustom || {} };
       ui.pendingCustom = null;
     } else if (ui.flow === 'edit') {
       state.profile = profileFrom(d);
@@ -278,7 +310,7 @@
       const b = curBlock();
       b.endDate = todayISO();
       state.profile = profileFrom(d);
-      state.blocks.push({ n: b.n + 1, startDate: d.startDate, plan: clone(d.plan), startStats: statsFrom(d) });
+      state.blocks.push(newBlock(b.n + 1, d));
       ui.checkinLater = false;
     }
     save();
@@ -328,11 +360,25 @@
         <div style="display:grid;gap:8px">${Object.entries(ACTIVITY).map(([k, a]) => radio('activity', k, a.label, `${a.desc} ${a.ex} ${a.steps}.`)).join('')}</div>
         <div class="card" id="macro-preview">${macroHTML(d, d.activity)}</div>`;
     },
+    mode(d) {
+      const cur = MODES[d.mode] ? d.mode : 'lock';
+      return `<h1>Pick your block style</h1>
+        <p class="lede">How do you want to choose your exercises for the next ${WEEKS} weeks? You'll still train 3 full-body days a week, with deloads in weeks ${DELOAD.join(' and ')}.</p>
+        <div class="modes">${Object.entries(MODES).map(([k, m]) => `<label class="radio mode"><input type="radio" name="mode" value="${k}" data-draft-radio="mode"${cur === k ? ' checked' : ''}><span><span class="micon" aria-hidden="true">${m.icon}</span><b>${esc(m.name)}${m.rec ? ' <span class="rectag">Recommended</span>' : ''}</b><em>${esc(m.tag)}</em><small>${esc(m.desc)}</small></span></label>`).join('')}</div>`;
+    },
     plan(d) {
+      const m = MODES[d.mode] ? d.mode : 'lock';
+      const lede = {
+        lock: `Pick one exercise for each movement. You'll do these same exercises on all 3 days, every week, for the next ${WEEKS} weeks. At week ${WEEKS + 1} you'll pick new ones.`,
+        ab: 'Pick one exercise per movement for each plan. Plan A is for Days 1 and 3, Plan B is for Day 2. Using different exercises in each plan gives you the most variety.',
+        phase: `Pick your exercises for weeks 1 to ${PHASE_WEEK - 1}. At week ${PHASE_WEEK} the app will ask you to pick new ones for the rest of the block.`,
+        free: "Pick your starting exercises. On every workout you can change any of them right on the workout page. We'll remember your last pick.",
+      }[m];
       return `<h1>${ui.flow === 'checkin' ? 'Pick your next 12 weeks' : 'Build your 3-day plan'}</h1>
-        <p class="lede">Pick one exercise for each movement. You'll do these same exercises on all 3 days, every week, for the next 12 weeks. At week 13 you'll pick new ones. Tap a link to watch a how-to video.</p>
+        <p class="lede">${lede} Tap a link to watch a how-to video.</p>
+        <p class="stylechip">${MODES[m].icon} ${esc(MODES[m].name)} <button class="linkbtn" data-act="back">Change</button></p>
         <label class="field" for="f-start">Week 1 starts<input type="date" id="f-start" data-draft="startDate" value="${esc(d.startDate)}"></label>
-        ${planBuilder(d.plan, 'draft')}`;
+        ${m === 'ab' ? planBuilder(d.plan, 'draft', PLAN_LABEL.ab.A) + planBuilder(d.planB || (d.planB = defaultPlan(d.plan)), 'draftB', PLAN_LABEL.ab.B) : planBuilder(d.plan, 'draft', m === 'phase' ? PLAN_LABEL.phase.A : '')}`;
     },
   };
 
@@ -359,8 +405,8 @@
     return `<div class="addcustom"><input type="text" id="cx-${key}" placeholder="Exercise name, e.g. Hack Squat" maxlength="60" autocomplete="off" aria-label="Your own ${esc(c.label)} exercise">
       <div class="btnrow"><button class="btn sm primary" data-act="custom-add" data-key="${key}" data-cat="${c.key}" data-src="${src}">Add</button><button class="btn sm ghost" data-act="custom-cancel">Cancel</button></div></div>`;
   }
-  function planBuilder(plan, src) {
-    return `<section class="card">
+  function planBuilder(plan, src, title) {
+    return `<section class="card">${title ? `<h3 class="plantitle">${esc(title)}</h3>` : ''}
       <div class="prow"><span class="cat">Warm up</span><span class="warmline">Cardio 5–10 min, then 5 dynamic stretches</span></div>
       ${CATS.map((c) => {
         const e = findEx(plan[c.key]);
@@ -376,8 +422,8 @@
     </section>`;
   }
 
-  function planSummary(plan) {
-    return `<section class="card">
+  function planSummary(plan, title) {
+    return `<section class="card">${title ? `<h3 class="plantitle">${esc(title)}</h3>` : ''}
       <div class="prow"><span class="cat">Warm up</span><span class="warmline">Cardio 5–10 min, then 5 dynamic stretches</span></div>
       ${CATS.map((c) => { const e = findEx(plan[c.key]); return `<div class="prow"><span class="cat">${esc(c.label)}</span><div class="pick">${exLink(plan[c.key])}${e?.detail ? `<span class="detail">${esc(e.detail)}</span>` : ''}</div></div>`; }).join('')}
     </section>`;
@@ -482,12 +528,12 @@
     const w = ui.week ?? now;
     const d = ui.day ?? firstOpenDay(b.n, w);
     ui.ctx = { n: b.n, w, d };
-    const plan = planOf(b);
+    const mode = modeOf(b);
     const log = getLog(b.n, w, d);
     const unit = state.profile.weightUnit;
     const deload = isDeload(w);
     const cardio = CATS.find((c) => c.type === 'cardio');
-    const cardioEx = cardio && findEx(plan[cardio.key]);
+    const cardioEx = cardio && findEx(log?.ex?.[cardio.key] || planAt(b, cardio.key, w, d));
 
     const weekBtns = Array.from({ length: WEEKS }, (_, i) => i + 1).map((n) =>
       `<button data-act="week" data-w="${n}" aria-pressed="${n === w}" class="${isDeload(n) ? 'deload ' : ''}${n === now ? 'now ' : ''}${daysDone(b.n, n) === 3 ? 'full' : ''}" aria-label="Week ${n}${isDeload(n) ? ', deload' : ''}">${n}<small>${isDeload(n) ? 'Deload' : n === now ? 'Now' : ''}</small></button>`).join('');
@@ -495,6 +541,8 @@
     let banner = measNudge(b);
     if (needsCheckin()) banner += checkinBanner();
     else if (w === WEEKS && daysDone(b.n, WEEKS) === 3) banner += finishBanner(b);
+    if (mode === 'phase' && w >= PHASE_WEEK && !b.planBPicked && !needsCheckin()) banner += `<div class="banner info"><strong>🔁 Halfway! Pick new moves for weeks ${PHASE_WEEK}–${WEEKS}</strong><p>Phase Shift: time for fresh exercises for the second half of Block ${b.n}.</p><div><button class="btn primary sm" data-act="phase-pick">Pick new moves</button></div></div>`;
+    else if (mode === 'phase' && w === PHASE_WEEK - 1) banner += `<div class="banner info"><strong>Next week you pick new moves</strong><p>Phase Shift: week ${PHASE_WEEK} starts the second half with fresh exercises.</p></div>`;
     if (deload) banner += `<div class="banner deload"><strong>Deload week: lower your weights</strong><p>Use about 60% of the weight you lifted last week on every exercise. The grey numbers in each set are a suggested deload weight. Same exercises, same reps, clean form. This lets your body recover so you come back stronger next week.</p></div>`;
     else if (isDeload(w + 1)) banner += `<div class="banner deload"><strong>Heads up: week ${w + 1} is a deload week</strong><p>Push this week. Next week you'll lower your weights to recover.</p></div>`;
 
@@ -503,7 +551,7 @@
     const exCards = CATS.filter((c) => c.type !== 'cardio').map((c) => {
       const planId = planAt(b, c.key, w, d);
       const exId = log?.ex?.[c.key] || planId;
-      const swapped = exId !== planId;
+      const swapped = mode !== 'free' && exId !== planId;
       const lr = LR(c.key);
       const sets = log?.sets?.[c.key] || blankSets();
       const best = lastBest(b.n, w, d, c.key, exId);
@@ -512,7 +560,9 @@
       const phW = best ? dl(best.w) : '';
       const ph = (x) => (best && x ? String(x) : '');
       const inp = (i, f, val, mode, label, placeholder) => `<input type="text" inputmode="${mode}" data-set="${c.key}" data-i="${i}" data-f="${f}" value="${esc(val || '')}" placeholder="${esc(placeholder)}" aria-label="${esc(c.label)} set ${i + 1} ${label}" autocomplete="off">`;
-      const swapUI = ui.swapOpen === c.key
+      const free = mode === 'free';
+      const pickUI = free ? `<label class="field freepick" for="fp-${c.key}">Today's pick<select id="fp-${c.key}" data-pick="${c.key}">${optionsFor(c).map((o) => `<option value="${esc(o.id)}"${o.id === exId ? ' selected' : ''}>${esc(o.name)}${o.custom ? ' (your own)' : ''}</option>`).join('')}</select></label>` : '';
+      const swapUI = !free && ui.swapOpen === c.key
         ? `<div class="swapbox"><p><strong>We recommend keeping the same exercise.</strong> Sticking with it for all 12 weeks is how you see your progress. Only swap for an injury or if the equipment isn't free.</p>
             <label class="field" for="sw-${c.key}">Swap to<select id="sw-${c.key}" data-swap="${c.key}">${optionsFor(c).map((o) => `<option value="${esc(o.id)}"${o.id === exId ? ' selected' : ''}>${esc(o.name)}${o.id === planId ? ' (your plan)' : ''}</option>`).join('')}</select></label>
             ${swapped
@@ -523,14 +573,14 @@
       return `<section class="card${deload ? ' deloadcard' : ''}">
         <div class="exhead"><span class="cat">${esc(c.label)}${swapped ? ' <span class="swaptag">Swapped today</span>' : ''}</span>${exLink(exId)}${e?.detail ? `<span class="detail">${esc(e.detail)}</span>` : ''}
           ${swapped ? `<span class="detail">Your plan: ${esc(findEx(planId)?.name || '')} · <button class="linkbtn" data-act="swap-reset" data-cat="${c.key}">Switch back</button></span>` : ''}</div>
-        ${swapUI}
+        ${pickUI}${swapUI}
         <div class="sets${lr ? ' lr' : ''}">
           <div class="sethead"><span>Set</span><span>Weight (${unit})</span>${lr ? '<span>Left reps</span><span>Right reps</span>' : '<span>Reps</span>'}</div>
           ${sets.map((x, i) => `<div class="set"><span class="setn">${i + 1}</span>
             ${inp(i, 'w', x.w, 'decimal', 'weight', i === 0 ? phW : '')}
             ${lr ? inp(i, 'rl', x.rl, 'numeric', 'left reps', i === 0 ? ph(best?.rl) : '') + inp(i, 'rr', x.rr, 'numeric', 'right reps', i === 0 ? ph(best?.rr) : '') : inp(i, 'r', x.r, 'numeric', 'reps', i === 0 ? ph(best?.r) : '')}</div>`).join('')}
         </div>
-        <div class="btnrow"><button class="btn sm ghost" data-act="add-set" data-cat="${c.key}">+ Add set</button>${sets.length > 1 ? `<button class="btn sm ghost" data-act="rm-set" data-cat="${c.key}">Remove last set</button>` : ''}${ui.swapOpen === c.key ? '' : `<button class="btn sm ghost" data-act="swap-open" data-cat="${c.key}">Swap for today</button>`}</div>
+        <div class="btnrow"><button class="btn sm ghost" data-act="add-set" data-cat="${c.key}">+ Add set</button>${sets.length > 1 ? `<button class="btn sm ghost" data-act="rm-set" data-cat="${c.key}">Remove last set</button>` : ''}${free || ui.swapOpen === c.key ? '' : `<button class="btn sm ghost" data-act="swap-open" data-cat="${c.key}">Swap for today</button>`}</div>
         ${best ? `<p class="hint num">Last time (week ${best.week}, day ${best.day}) best: <em>${best.w || '–'} ${unit} × ${lr ? `L ${best.rl || '–'} / R ${best.rr || '–'}` : best.r || '–'}</em>${deload ? ` · Deload: about <em>${Math.round(best.w * 0.6)} ${unit}</em>` : ''}</p>` : (deload ? `<p class="hint">Deload: use about 60% of your usual weight.</p>` : (w === 1 && d === 1 ? '<p class="hint">Log your starting weight and reps. From your next workout they show here in grey as a reminder.</p>' : ''))}
       </section>`;
     }).join('');
@@ -538,7 +588,8 @@
     return `${banner}
       ${dayTargets(todayISO(), "Today's activity")}
       <section class="card"><div class="segrow"><h2>Week ${w}${w === now ? '' : ` <small class="muted">(this week is ${now})</small>`}</h2><span class="muted num">${fmtDate(addDays(b.startDate, (w - 1) * 7))}</span></div><div class="weeks">${weekBtns}</div></section>
-      <div class="days" role="group" aria-label="Day">${[1, 2, 3].map((n) => `<button data-act="day" data-d="${n}" aria-pressed="${n === d}">Day ${n}${getLog(b.n, w, n)?.done ? ' <span class="ok">✓</span>' : ''}</button>`).join('')}</div>
+      <div class="days" role="group" aria-label="Day">${[1, 2, 3].map((n) => `<button data-act="day" data-d="${n}" aria-pressed="${n === d}">Day ${n}${mode === 'ab' ? ` <small>${whichPlan(b, w, n)}</small>` : ''}${getLog(b.n, w, n)?.done ? ' <span class="ok">✓</span>' : ''}</button>`).join('')}</div>
+      ${mode === 'ab' || mode === 'phase' ? `<p class="stylechip">${MODES[mode].icon} ${esc(PLAN_LABEL[mode][whichPlan(b, w, d)])}</p>` : mode === 'free' ? `<p class="stylechip">${MODES.free.icon} Freestyle: pick each exercise below</p>` : ''}
       <section class="card"><h3>Warm up</h3>
         ${chk('warmup', '1. Cardio warm-up', '5–10 minutes, easy pace')}
         <div class="stretches"><p class="stitle">2. Dynamic stretches <small>Keep moving, don't hold. Do them in this order.</small></p>
@@ -562,14 +613,25 @@
   function viewPlan() {
     const b = curBlock();
     const endW = addDays(b.startDate, WEEKS * 7);
+    const mode = modeOf(b);
+    const two = mode === 'ab' || mode === 'phase';
+    const B = b.planB || planOf(b);
+    const how = { lock: 'Three full-body days a week with the same exercises', ab: 'Plan A on Days 1 and 3, Plan B on Day 2', phase: `One set of exercises for weeks 1–${PHASE_WEEK - 1}, fresh ones for weeks ${PHASE_WEEK}–${WEEKS}`, free: 'You pick each exercise on the workout page. Below are your latest picks' }[mode];
+    let body;
+    if (ui.editPlan === 'B') body = planBuilder(B, 'blockB', `Pick ${PLAN_LABEL.phase.B}`);
+    else if (ui.editPlan) body = two ? planBuilder(planOf(b), 'block', PLAN_LABEL[mode].A) + planBuilder(B, 'blockB', PLAN_LABEL[mode].B) : planBuilder(planOf(b), 'block');
+    else body = two ? planSummary(planOf(b), PLAN_LABEL[mode].A) + (mode === 'phase' && !b.planBPicked
+      ? `<section class="card"><h3 class="plantitle">${esc(PLAN_LABEL.phase.B)}</h3><p class="muted" style="font-size:.88rem">You'll pick these at week ${PHASE_WEEK}. Want to plan ahead?</p><div><button class="btn sm primary" data-act="phase-pick">Pick now</button></div></section>`
+      : planSummary(B, PLAN_LABEL[mode].B)) : planSummary(planOf(b));
     return `<section class="card"><h1>Block ${b.n} plan</h1>
-        <p class="muted">Three full-body days a week with the same exercises, from ${fmtDate(b.startDate)} to ${fmtDate(addDays(endW, -1))}. Deload weeks are ${DELOAD.join(' and ')}. In week ${WEEKS + 1} you'll update your measurements and pick new exercises.</p>
+        <p class="stylechip">${MODES[mode].icon} ${esc(MODES[mode].name)}</p>
+        <p class="muted">${how}, from ${fmtDate(b.startDate)} to ${fmtDate(addDays(endW, -1))}. Deload weeks are ${DELOAD.join(' and ')}. In week ${WEEKS + 1} you'll update your measurements and pick new exercises.</p>
       </section>
-      ${ui.editPlan ? planBuilder(planOf(b), 'block') : planSummary(planOf(b))}
+      ${body}
       ${ui.editPlan
         ? `<section class="card"><label class="field" for="f-bstart">Week 1 started<input type="date" id="f-bstart" data-blockdate value="${esc(b.startDate)}"></label>
-           <p class="muted" style="font-size:.85rem">Only change exercises to fix a mistake. Workouts you already logged keep the exercise you did.</p>
-           <div><button class="btn primary" data-act="plan-done">Done</button></div></section>`
+           ${ui.editPlan === 'B' ? '' : '<p class="muted" style="font-size:.85rem">Only change exercises to fix a mistake. Workouts you already logged keep the exercise you did.</p>'}
+           <div><button class="btn primary" data-act="plan-done">${ui.editPlan === 'B' ? 'Save my new moves' : 'Done'}</button></div></section>`
         : '<div><button class="btn ghost sm" data-act="plan-edit">Fix a mistake in this plan</button></div>'}`;
   }
 
@@ -633,7 +695,7 @@
   function renderWelcome() {
     const steps = [
       ['Pick your 6 moves', 'One each: Squat, Bend, Push, Pull, Single Leg, Core.'],
-      ['Lock in for 12 weeks', '3 full-body days a week. Same moves. Get stronger.'],
+      ['Pick your style', 'Same moves all 12 weeks, or mix it up. 3 full-body days a week.'],
       ['Deload in weeks 6 and 12', 'Drop to about 60% of last week\'s weight and recover.'],
       ['Level up', 'After 12 weeks, check in, pick new moves, go again.'],
     ];
@@ -755,17 +817,21 @@
       case 'checkin-start': startFlow('checkin'); break;
       case 'edit-profile': startFlow('edit'); break;
       case 'plan-edit': ui.editPlan = true; break;
-      case 'plan-done': ui.editPlan = false; break;
+      case 'plan-done': { if (ui.editPlan === 'B') { curBlock().planBPicked = true; save(); ui.toast = `Weeks ${PHASE_WEEK}–${WEEKS} plan saved.`; } ui.editPlan = false; break; }
+      case 'phase-pick': { const b = curBlock(); b.planB = b.planB || clone(planOf(b)); ui.view = 'plan'; ui.editPlan = 'B'; top(); break; }
       case 'stretch-img': ui.stretchOpen = ui.stretchOpen === t.dataset.id ? null : t.dataset.id; break;
       case 'swap-open': ui.swapOpen = t.dataset.cat; break;
       case 'swap-close': ui.swapOpen = null; break;
       case 'swap-block': {
-        const { n, w, d } = ui.ctx; const c = t.dataset.cat; const blk = curBlock(); const plan = planOf(blk);
-        const to = ensureLog(n, w, d).ex[c]; const from = plan[c];
+        const { n, w, d } = ui.ctx; const c = t.dataset.cat; const blk = curBlock(); const which = whichPlan(blk, w, d);
+        const to = ensureLog(n, w, d).ex[c]; const from = planByKey(blk, which)[c];
         // Keep past workouts tied to what was actually done, then change the plan from here on.
-        for (const [k, l] of Object.entries(state.logs)) if (k.startsWith(blk.n + '-') && l.ex && !l.ex[c]) l.ex[c] = from;
-        blk.plan = plan; plan[c] = to;
-        (blk.planChanges = blk.planChanges || []).push({ date: todayISO(), week: w, day: d, movement: c, from, to });
+        for (const [k, l] of Object.entries(state.logs)) {
+          const [kn, kw, kd] = k.split('-').map(Number);
+          if (kn === blk.n && l.ex && !l.ex[c] && whichPlan(blk, kw, kd) === which) l.ex[c] = from;
+        }
+        setPlanEx(blk, which, c, to);
+        (blk.planChanges = blk.planChanges || []).push({ date: todayISO(), week: w, day: d, movement: c, which, from, to });
         ui.swapOpen = null; save(); break;
       }
       case 'swap-reset': { const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d); log.ex[t.dataset.cat] = planAt(curBlock(), t.dataset.cat, w, d); ui.swapOpen = null; save(); break; }
@@ -774,7 +840,7 @@
         const { n, w, d } = ui.ctx; const c = t.dataset.cat;
         const log = ensureLog(n, w, d);
         if (!log.sets[c]) log.sets[c] = blankSets();
-        log.ex[c] = log.ex[c] || planOf(curBlock())[c];
+        log.ex[c] = log.ex[c] || planAt(curBlock(), c, w, d);
         if (act === 'add-set') log.sets[c].push({ w: '', r: '' }); else if (log.sets[c].length > 1) log.sets[c].pop();
         save(); break;
       }
@@ -796,8 +862,7 @@
         const c = t.dataset.cat, store = customStore();
         const ex = { id: 'custom-' + Date.now().toString(36), name, custom: true, video: '' };
         (store[c] = store[c] || []).push(ex);
-        if (t.dataset.src === 'draft') ui.draft.plan[c] = ex.id;
-        else { const blk = curBlock(); blk.plan = planOf(blk); blk.plan[c] = ex.id; }
+        setFromSrc(t.dataset.src, c, ex.id);
         ui.addCustom = null; save(); break;
       }
       case 'cal-month': {
@@ -853,16 +918,26 @@
   }
   function completeDay(n, w, d) {
     const log = ensureLog(n, w, d);
-    log.done = true; log.doneDate = todayISO(); snapshotEx(log, d);
+    log.done = true; log.doneDate = todayISO(); snapshotEx(log, w, d);
     ui.missing = null; save();
     if (w === WEEKS && daysDone(n, WEEKS) === 3) { ui.day = d; ui.toast = `Day ${d} complete!`; }
     else if (d < 3) { ui.week = w; ui.day = d + 1; ui.toast = `Day ${d} complete! Here's Day ${d + 1}.`; }
     else if (w < WEEKS) { ui.week = w + 1; ui.day = 1; ui.toast = `Week ${w} done! Here's Week ${w + 1}, Day 1.`; }
     window.scrollTo(0, 0);
   }
-  function snapshotEx(log, d) {
-    const plan = planOf(curBlock());
-    for (const c of CATS) if (!log.ex[c.key]) log.ex[c.key] = plan[c.key];
+  function snapshotEx(log, w, d) {
+    const blk = curBlock();
+    for (const c of CATS) if (!log.ex[c.key]) log.ex[c.key] = planAt(blk, c.key, w, d);
+  }
+  // Plan pickers write to the draft (setup / check-in) or to the current block's plan A or B.
+  function setFromSrc(src, cat, id) {
+    if (src === 'draft') ui.draft.plan[cat] = id;
+    else if (src === 'draftB') { ui.draft.planB = ui.draft.planB || defaultPlan(ui.draft.plan); ui.draft.planB[cat] = id; }
+    else {
+      const blk = curBlock();
+      setPlanEx(blk, src === 'blockB' ? 'B' : 'A', cat, id);
+      if (src === 'blockB' && modeOf(blk) === 'phase') blk.planBPicked = true;
+    }
   }
 
   app.addEventListener('input', (e) => {
@@ -884,7 +959,7 @@
     if (t.dataset.set) {
       const c = t.dataset.set; const log = ensureLog(n, w, d);
       if (!log.sets[c]) log.sets[c] = blankSets();
-      log.ex[c] = log.ex[c] || planOf(curBlock())[c];
+      log.ex[c] = log.ex[c] || planAt(curBlock(), c, w, d);
       log.sets[c][+t.dataset.i][t.dataset.f] = t.value.trim();
       save(); return;
     }
@@ -898,10 +973,14 @@
       const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d);
       log.ex[t.dataset.swap] = t.value; save(); render(); return;
     }
+    if (t.dataset.pick && ui.ctx) {
+      // Freestyle: today's pick, also remembered as the starting pick next time.
+      const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d); const c = t.dataset.pick;
+      log.ex[c] = t.value; setPlanEx(curBlock(), 'A', c, t.value); save(); render(); return;
+    }
     if (t.hasAttribute('data-plan')) {
-      if (t.dataset.src === 'draft') ui.draft.plan[t.dataset.cat] = t.value;
-      else { const b = curBlock(); b.plan = planOf(b); b.plan[t.dataset.cat] = t.value; }
-      if (t.dataset.src === 'block') save();
+      setFromSrc(t.dataset.src, t.dataset.cat, t.value);
+      if (t.dataset.src.startsWith('block')) save();
       render(); return;
     }
     if (t.dataset.stretch && ui.ctx) {
@@ -911,7 +990,7 @@
     if (t.dataset.check && ui.ctx) {
       const { n, w, d } = ui.ctx; const log = ensureLog(n, w, d);
       log[t.dataset.check] = t.checked;
-      if (t.dataset.check === 'cardio') log.ex.cardio = log.ex.cardio || planOf(curBlock()).cardio;
+      if (t.dataset.check === 'cardio') log.ex.cardio = log.ex.cardio || planAt(curBlock(), 'cardio', w, d);
       save(); return;
     }
     if (t.hasAttribute('data-blockdate') && t.value) { curBlock().startDate = t.value; ui.week = null; ui.checkinLater = false; save(); render(); return; }
@@ -953,7 +1032,7 @@
     const days = [['Block', 'Week', 'Day', 'Deload week', 'Week starting', 'Day complete', 'Completed on', 'Cardio warm-up', 'Dynamic stretches done', 'Cardio', 'Cardio exercise', 'Cardio minutes', 'Notes']];
     for (const [n, w, d] of keys) {
       const l = state.logs[logKey(n, w, d)], b = blockOf(n);
-      const plan = b ? planOf(b) : {};
+      const plan = b ? planFor(b, w, d) : {};
       for (const c of CATS) {
         if (c.type === 'cardio') continue;
         const arr = l.sets && l.sets[c.key];
@@ -986,14 +1065,19 @@
     const prof = [['Item', 'Value'], ['Name', p.name], ['Age', v(p.age)], ['Sex', p.sex || ''], ['Height', heightText(p)], [`Current weight (${wu})`, v(p.weight)], [`Goal weight (${wu})`, v(p.goalWeight)],
       ['Goal', GOALS[p.goal || 'lose'].label], ['Usual activity level', ACTIVITY[p.activity || 'moderate'].label], ['Calories (usual activity)', m.missing ? '' : m.target], ['Protein (g / day)', m.protein ?? ''],
       ['Current block', curBlock().n], ['Block started', curBlock().startDate], ['Exported', todayISO()]];
-    const plans = [['Block', 'Started', ...CATS.map((c) => c.label)], ...state.blocks.map((b) => [b.n, b.startDate, ...CATS.map((c) => findEx(planOf(b)[c.key])?.name || '')])];
+    const plans = [['Block', 'Started', 'Block style', 'Plan', ...CATS.map((c) => c.label)]];
+    for (const b of state.blocks) {
+      const mode = modeOf(b), row = (label, pl) => plans.push([b.n, b.startDate, MODES[mode].name, label, ...CATS.map((c) => findEx(pl[c.key])?.name || '')]);
+      if (PLAN_LABEL[mode]) { row(PLAN_LABEL[mode].A, planOf(b)); row(PLAN_LABEL[mode].B, b.planB || planOf(b)); }
+      else row(mode === 'free' ? 'Latest picks' : 'All weeks', planOf(b));
+    }
 
     return window.makeXlsx([
       { name: 'Workout Sets', rows: sets, widths: [7, 6, 5, 11, 13, 13, 11, 26, 5, 12, 6, 10, 11, 22] },
       { name: 'Lift Days', rows: days, widths: [7, 6, 5, 11, 13, 12, 13, 14, 18, 7, 22, 14, 40] },
       { name: 'Bonus & Steps', rows: daily, widths: [12, 18, 13, 9, 15, 9, 30] },
       { name: 'Measurements', rows: meas, widths: [7, 13, 9, 11, 12, 9, 9, 9, 10, 9, 16, 13] },
-      { name: 'Plans', rows: plans, widths: [7, 12, 20, 24, 18, 20, 16, 18, 22] },
+      { name: 'Plans', rows: plans, widths: [7, 12, 13, 20, 20, 24, 18, 20, 16, 18, 22] },
       { name: 'Profile', rows: prof, widths: [24, 22] },
     ]);
   }

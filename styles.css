@@ -373,3 +373,17 @@ th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .rest-in .btnrow { justify-content: center; }
 .rest-in .btn.ghost { color: var(--bar-ink); border-color: #555; }
 main.page { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+
+/* block styles */
+.modes { display: grid; gap: 10px; }
+.radio.mode { padding: 14px; }
+.radio.mode > span { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 2px; align-items: center; }
+.radio.mode .micon { grid-row: span 2; font-size: 1.5rem; line-height: 1; }
+.radio.mode b { font-family: var(--display, inherit); font-size: 1.05rem; }
+.radio.mode em { font-style: normal; font-weight: 600; font-size: 0.85rem; }
+.radio.mode small { grid-column: 1 / -1; margin-top: 4px; line-height: 1.4; }
+.rectag { display: inline-block; vertical-align: middle; background: var(--accent); color: #111; border-radius: 99px; padding: 1px 8px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.04em; margin-left: 4px; }
+.stylechip { margin: 0; font-weight: 600; font-size: 0.9rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.plantitle { margin: 0 0 4px; }
+.freepick { margin-bottom: 4px; }
+.days button small { font-size: 0.7rem; opacity: 0.7; margin-left: 2px; }
